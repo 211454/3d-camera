@@ -11,6 +11,7 @@ struct AutoKlinik3DCameraApp: App {
 struct ContentView: View {
     @StateObject private var scanner = MarkerScanner()
     @State private var target = 1
+    @State private var language = "ru"
 
     var body: some View {
         ZStack {
@@ -18,7 +19,15 @@ struct ContentView: View {
             VStack(spacing: 14) {
                 Text("AUTOKLINIK 3D CAMERA")
                     .font(.title2.bold()).foregroundStyle(.white)
-                Text("Наведите камеру на маркер №\\(target)")
+                Picker("Язык / Sprache", selection: $language) {
+                    Text("Русский").tag("ru")
+                    Text("Deutsch").tag("de")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: language) { value in
+                    scanner.setLanguage(value)
+                }
+                Text(language == "ru" ? "Наведите камеру на маркер №\(target)" : "Richten Sie die Kamera auf Marker Nr. \(target)")
                     .font(.headline).foregroundStyle(.cyan)
                 CameraPreview(session: scanner.session)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -29,8 +38,8 @@ struct ContentView: View {
                             .foregroundStyle(.white)
                     }
                 HStack(spacing: 8) {
-                    ForEach(1...4, id: \\.self) { number in
-                        Button("№\\(number)") {
+                    ForEach(1...4, id: \.self) { number in
+                        Button("№\(number)") {
                             target = number
                             scanner.setTarget(number)
                         }
@@ -40,9 +49,9 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
-                Text("Найдено: " + scanner.detected.sorted().map(String.init).joined(separator: ", "))
+                Text((language == "ru" ? "Найдено: " : "Erkannt: ") + scanner.detected.sorted().map(String.init).joined(separator: ", "))
                     .foregroundStyle(.white)
-                Button("Начать сканирование") {
+                Button(language == "ru" ? "Начать сканирование" : "Scan starten") {
                     scanner.setTarget(target)
                     scanner.start()
                 }
@@ -82,6 +91,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
     private let queue = DispatchQueue(label: "autoklinik.camera")
     private let voice = AVSpeechSynthesizer()
     private var target = 1
+    private var language = "ru"
     private var configured = false
     private var announced: Set<Int> = []
 
@@ -99,9 +109,16 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
         default: status = "Разрешите доступ к камере в настройках"
         }
     }
+    func setLanguage(_ value: String) {
+        language = value
+        setTarget(target)
+    }
+    private func localized(_ russian: String, _ german: String) -> String {
+        language == "de" ? german : russian
+    }
     func setTarget(_ value: Int) {
         target = value
-        speak("Наведите камеру на маркер номер \\(value)")
+        speak(localized("Наведите камеру на маркер номер \(value)", "Richten Sie die Kamera auf Marker Nummer \(value)"))
     }
     func start() { requestAccessAndStart(target: target) }
     func stop() { queue.async { if self.session.isRunning { self.session.stopRunning() } } }
@@ -130,7 +147,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
             }
             if !self.session.isRunning { self.session.startRunning() }
             DispatchQueue.main.async {
-                self.status = "Ищем маркер №\\(self.target)"
+                self.status = self.localized("Ищем маркер №\(self.target)", "Suche Marker Nr. \(self.target)")
                 self.setTarget(self.target)
             }
         }
@@ -148,19 +165,19 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
             }
         for id in ids {
             detected.insert(id)
-            status = "Обнаружен маркер №\\(id)"
+            status = localized("Обнаружен маркер №\(id)", "Marker Nr. \(id) erkannt")
             if id == target && !announced.contains(id) {
                 announced.insert(id)
-                speak("Маркер номер \\(id) найден")
-                if id < 4 { target = id + 1; speak("Наведите камеру на маркер номер \\(target)") }
-                else { speak("Все четыре маркера распознаны") }
+                speak(localized("Маркер номер \(id) найден", "Marker Nummer \(id) erkannt"))
+                if id < 4 { target = id + 1; speak(localized("Наведите камеру на маркер номер \(target)", "Richten Sie die Kamera auf Marker Nummer \(target)")) }
+                else { speak(localized("Все четыре маркера распознаны", "Alle vier Marker wurden erkannt")) }
             }
         }
     }
     private func speak(_ text: String) {
         voice.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "ru-RU")
+        utterance.voice = AVSpeechSynthesisVoice(language: language == "de" ? "de-DE" : "ru-RU")
         utterance.rate = 0.48
         voice.speak(utterance)
     }
