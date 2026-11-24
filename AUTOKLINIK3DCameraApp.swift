@@ -37,8 +37,8 @@ struct ContentView: View {
                             .background(.black.opacity(0.7))
                             .foregroundStyle(.white)
                     }
-                HStack(spacing: 8) {
-                    ForEach(1...4, id: \.self) { number in
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                    ForEach(1...6, id: \.self) { number in
                         Button("№\(number)") {
                             target = number
                             scanner.setTarget(number)
@@ -49,8 +49,12 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
+                Text(language == "ru" ? "1–2: стойки подъёмника; 3–6: колёса" : "1–2: Hebebühne; 3–6: Räder")
+                    .font(.caption).foregroundStyle(.white)
                 Text((language == "ru" ? "Найдено: " : "Erkannt: ") + scanner.detected.sorted().map(String.init).joined(separator: ", "))
                     .foregroundStyle(.white)
+                Text(language == "ru" ? "Тест распознавания: геометрические измерения ещё не реализованы" : "Erkennungstest: Geometriemessung noch nicht implementiert")
+                    .font(.caption).foregroundStyle(.orange)
                 Button(language == "ru" ? "Начать сканирование" : "Scan starten") {
                     scanner.setTarget(target)
                     scanner.start()
@@ -160,7 +164,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
             .compactMap { raw -> Int? in
                 guard raw.hasPrefix("AUTOKLINIK-3D:"),
                       let id = Int(raw.dropFirst("AUTOKLINIK-3D:".count)),
-                      (1...4).contains(id) else { return nil }
+                      (1...6).contains(id) else { return nil }
                 return id
             }
         for id in ids {
@@ -169,8 +173,8 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
             if id == target && !announced.contains(id) {
                 announced.insert(id)
                 speak(localized("Маркер номер \(id) найден", "Marker Nummer \(id) erkannt"))
-                if id < 4 { target = id + 1; speak(localized("Наведите камеру на маркер номер \(target)", "Richten Sie die Kamera auf Marker Nummer \(target)")) }
-                else { speak(localized("Все четыре маркера распознаны", "Alle vier Marker wurden erkannt")) }
+                if id < 6 { target = id + 1; speak(localized("Наведите камеру на маркер номер \(target)", "Richten Sie die Kamera auf Marker Nummer \(target)")) }
+                else { speak(localized("Все шесть маркеров распознаны", "Alle sechs Marker wurden erkannt")) }
             }
         }
     }
