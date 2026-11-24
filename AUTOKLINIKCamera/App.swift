@@ -118,13 +118,11 @@ struct ScannerView: View {
 
 struct CalibrationView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var markerSize = "100"
+    @State private var markerSize = "155"
     @State private var confirmed = false
-    @State private var referenceDistance = ""
     @State private var stage = 0
 
     private var validSize: Bool { (Double(markerSize.replacingOccurrences(of: ",", with: ".")) ?? 0) > 0 }
-    private var validDistance: Bool { (Double(referenceDistance.replacingOccurrences(of: ",", with: ".")) ?? 0) > 0 }
 
     var body: some View {
         NavigationStack {
@@ -132,21 +130,19 @@ struct CalibrationView: View {
                 Section("Шаг 2 — подготовка к калибровке") {
                     Label("Все 8 QR-маркеров зарегистрированы", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                    TextField("Размер стороны маркера, мм", text: $markerSize)
-                        .keyboardType(.decimalPad)
+                    Text("Номинальная сторона QR-кода: 155 мм (печать 100%)")
+                    Text("Перед точными измерениями проверьте фактическую сторону линейкой.")
                     Toggle("Маркеры закреплены и неподвижны", isOn: $confirmed)
                 }
-                Section("Геометрическая привязка") {
-                    TextField("Контрольное расстояние между центрами двух опорных маркеров, мм", text: $referenceDistance)
-                        .keyboardType(.decimalPad)
-                    Text("Измерьте расстояние рулеткой между центрами выбранных неподвижных опорных маркеров. Значение пока сохраняется только на этом экране.")
+                Section("Базовая система") {
+                    Text("Опорные маркеры закреплены неподвижно. Для автоматической 3D-калибровки ещё требуется распознавание углов и вычисление взаимного положения маркеров по кадрам с разных ракурсов.")
                         .font(.caption)
                 }
                 Section("Следующий этап") {
                     Button("Перейти к проверке геометрии") { stage = 1 }
-                        .disabled(!confirmed || !validSize || !validDistance)
+                        .disabled(!confirmed || !validSize)
                     if stage == 1 {
-                        Label("Подготовительные размеры введены", systemImage: "checkmark.circle")
+                        Label("Базовые параметры подтверждены", systemImage: "checkmark.circle")
                         Text("Следующая необходимая функция: обнаружение углов маркеров на кадре, оценка положения камеры и проверка репроекционной ошибки. До её реализации измерения заблокированы.")
                         Button("Начать измерение (пока недоступно)") {}
                             .disabled(true)
@@ -156,10 +152,10 @@ struct CalibrationView: View {
                     Text("Это экран подготовки, а не выполненная калибровка. Для реальных углов колёс нужны геометрические опорные точки, оценка положения камеры и проверка точности. QR-коды сами по себе не дают измерений.")
                 }
                 Section {
-                    if confirmed && validSize && validDistance {
+                    if confirmed && validSize {
                         Label("Данные подготовки заполнены. Геометрическая калибровка ещё не реализована.", systemImage: "info.circle")
                     } else {
-                        Text("Укажите оба размера и подтвердите крепление маркеров.")
+                        Text("Подтвердите неподвижное крепление маркеров.")
                     }
                 }
             }
