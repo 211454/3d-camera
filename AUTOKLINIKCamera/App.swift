@@ -70,11 +70,12 @@ struct CameraPreview: UIViewRepresentable {
 struct ScannerView: View {
     @StateObject private var model = ScannerModel()
     @State private var showCalibration = false
+    private let markerLabels = ["Левая стойка · верх", "Левая стойка · низ", "Правая стойка · верх", "Правая стойка · низ", "Переднее левое", "Переднее правое", "Заднее левое", "Заднее правое"]
 
     var body: some View {
         VStack(spacing: 12) {
             Text("AUTOKLINIK 3D CAMERA").font(.headline)
-            Text("Шаг 1 — распознавание 8 QR-маркеров")
+            Text("Шаг 1 — 2 стойки и 4 колеса")
             CameraPreview(session: model.session)
                 .frame(maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -82,7 +83,10 @@ struct ScannerView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4)) {
                 ForEach(1...8, id: \.self) { n in
                     let detected = model.found.contains("AUTOKLINIK-3D-\(n)")
-                    Text("\(n) \(detected ? "✓" : "○")")
+                    VStack(spacing: 2) {
+                        Text("\(n) \(detected ? "✓" : "○")").bold()
+                        Text(markerLabels[n - 1]).font(.system(size: 9)).multilineTextAlignment(.center)
+                    }
                         .padding(8).frame(maxWidth: .infinity)
                         .background(detected ? Color.green.opacity(0.3) : Color.gray.opacity(0.2))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -93,7 +97,7 @@ struct ScannerView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
             } else {
-                Text("Для продолжения распознайте все 8 маркеров.")
+                Text("Маркеры 1–4 — две неподвижные стойки; 5–8 — четыре колеса. Сканируйте каждый QR-код.")
                     .font(.caption)
             }
             Button("Сбросить результаты") {
@@ -104,7 +108,7 @@ struct ScannerView: View {
             if model.permissionDenied {
                 Text("Разреши доступ к камере в настройках iPhone.")
             }
-            Text("Тест распознавания QR. Измерение развала-схождения пока не реализовано.")
+            Text("Тест идентификации 4 опорных и 4 колёсных маркеров. 3D-измерение пока не реализовано.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding()
@@ -128,14 +132,14 @@ struct CalibrationView: View {
         NavigationStack {
             Form {
                 Section("Шаг 2 — подготовка к калибровке") {
-                    Label("Все 8 QR-маркеров зарегистрированы", systemImage: "checkmark.circle.fill")
+                    Label("4 опорных и 4 колёсных QR распознаны", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Text("Номинальная сторона QR-кода: 155 мм (печать 100%)")
                     Text("Перед точными измерениями проверьте фактическую сторону линейкой.")
                     Toggle("Маркеры закреплены и неподвижны", isOn: $confirmed)
                 }
                 Section("Базовая система") {
-                    Text("Опорные маркеры закреплены неподвижно. Для автоматической 3D-калибровки ещё требуется распознавание углов и вычисление взаимного положения маркеров по кадрам с разных ракурсов.")
+                    Text("Маркеры 1–2 закреплены на левой стойке, 3–4 — на правой; 5–8 — на четырёх колёсах. Для 3D-калибровки ещё требуется распознавание углов маркеров и вычисление их положения по нескольким кадрам.")
                         .font(.caption)
                 }
                 Section("Следующий этап") {
