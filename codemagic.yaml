@@ -8,6 +8,8 @@ workflows:
     scripts:
       - name: Install XcodeGen
         script: brew install xcodegen
+      - name: Build OpenCV with ArUco for iOS
+        script: bash scripts/build-opencv-ios.sh
       - name: Generate Xcode project
         script: xcodegen generate
       - name: Build simulator test
@@ -26,6 +28,8 @@ workflows:
     scripts:
       - name: Install XcodeGen
         script: brew install xcodegen
+      - name: Build OpenCV with ArUco for iOS
+        script: bash scripts/build-opencv-ios.sh
       - name: Generate Xcode project
         script: xcodegen generate
       - name: Build unsigned iPhone app
