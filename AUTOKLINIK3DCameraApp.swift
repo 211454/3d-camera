@@ -38,7 +38,7 @@ struct ContentView: View {
                             .foregroundStyle(.white)
                     }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
-                    ForEach(1...6, id: \.self) { number in
+                    ForEach(1...8, id: \.self) { number in
                         Button("№\(number)") {
                             target = number
                             scanner.setTarget(number)
@@ -49,7 +49,7 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
-                Text(language == "ru" ? "1–2: стойки подъёмника; 3–6: колёса" : "1–2: Hebebühne; 3–6: Räder")
+                Text(language == "ru" ? "1–2: стойки спереди; 3–6: колёса; 7–8: стойки сзади" : "1–2: Lift vorne; 3–6: Räder; 7–8: Lift hinten")
                     .font(.caption).foregroundStyle(.white)
                 Text((language == "ru" ? "Найдено: " : "Erkannt: ") + scanner.detected.sorted().map(String.init).joined(separator: ", "))
                     .foregroundStyle(.white)
@@ -164,7 +164,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
             .compactMap { raw -> Int? in
                 guard raw.hasPrefix("AUTOKLINIK-3D:"),
                       let id = Int(raw.dropFirst("AUTOKLINIK-3D:".count)),
-                      (1...6).contains(id) else { return nil }
+                      (1...8).contains(id) else { return nil }
                 return id
             }
         for id in ids {
@@ -173,8 +173,8 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
             if id == target && !announced.contains(id) {
                 announced.insert(id)
                 speak(localized("Маркер номер \(id) найден", "Marker Nummer \(id) erkannt"))
-                if id < 6 { target = id + 1; speak(localized("Наведите камеру на маркер номер \(target)", "Richten Sie die Kamera auf Marker Nummer \(target)")) }
-                else { speak(localized("Все шесть маркеров распознаны", "Alle sechs Marker wurden erkannt")) }
+                if id < 8 { target = id + 1; speak(localized("Наведите камеру на маркер номер \(target)", "Richten Sie die Kamera auf Marker Nummer \(target)")) }
+                else { speak(localized("Все восемь маркеров распознаны", "Alle acht Marker wurden erkannt")) }
             }
         }
     }
