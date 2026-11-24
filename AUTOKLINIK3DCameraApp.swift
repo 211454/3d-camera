@@ -17,77 +17,109 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             Color(red: 0.04, green: 0.07, blue: 0.12).ignoresSafeArea()
-            VStack(spacing: 14) {
-                Text("AUTOKLINIK 3D CAMERA")
-                    .font(.title2.bold()).foregroundStyle(.white)
-                Picker("Язык / Sprache", selection: $language) {
-                    Text("Русский").tag("ru")
-                    Text("Deutsch").tag("de")
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: language) { value in
-                    scanner.setLanguage(value)
-                }
-                Text(language == "ru" ? "Наведите камеру на маркер №\(target)" : "Richten Sie die Kamera auf Marker Nr. \(target)")
-                    .font(.headline).foregroundStyle(.cyan)
-                CameraPreview(session: scanner.session)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-                    .overlay(alignment: .topLeading) {
-                        Text(scanner.status).padding(12)
-                            .background(.black.opacity(0.7))
-                            .foregroundStyle(.white)
-                    }
-                Text(language == "ru" ? "Схема теста: 4 опорные мишени + 4 колеса" : "Testansicht: 4 Referenzmarken + 4 Räder")
-                    .font(.subheadline.bold()).foregroundStyle(.white)
-                HStack(spacing: 12) {
-                    VStack(spacing: 8) {
-                        Text("ОПОРЫ 1–4").font(.caption).foregroundStyle(.white)
-                        HStack { targetTile(1); targetTile(2) }
-                        HStack { targetTile(3); targetTile(4) }
-                    }
-                    Spacer()
-                    VStack(spacing: 8) {
-                        Text("КОЛЁСА 5–8").font(.caption).foregroundStyle(.white)
-                        HStack { targetTile(5); targetTile(6) }
-                        HStack { targetTile(7); targetTile(8) }
-                    }
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
-                    ForEach(1...8, id: \.self) { number in
-                        Button("№\(number)") {
-                            target = number
-                            scanner.setTarget(number)
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        Text("AUTOKLINIK 3D CAMERA")
+                            .font(.headline.bold()).foregroundStyle(.white)
+                        Picker("Язык / Sprache", selection: $language) {
+                            Text("Русский").tag("ru")
+                            Text("Deutsch").tag("de")
                         }
-                        .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(number == target ? Color.cyan : Color.gray.opacity(0.35))
-                        .foregroundStyle(number == target ? .black : .white)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .pickerStyle(.segmented)
+                        .onChange(of: language) { scanner.setLanguage($0) }
+
+                        CameraPreview(session: scanner.session)
+                            .frame(height: 230)
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(alignment: .topLeading) {
+                                Text(scanner.status)
+                                    .font(.caption)
+                                    .lineLimit(3)
+                                    .padding(8)
+                                    .background(.black.opacity(0.75))
+                                    .foregroundStyle(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .padding(8)
+                            }
+
+                        Text(language == "ru" ? "ДВЕ СТОЙКИ · 4 ОПОРНЫЕ МИШЕНИ" : "ZWEI SÄULEN · 4 REFERENZMARKEN")
+                            .font(.caption.bold()).foregroundStyle(.white)
+                        HStack(spacing: 10) {
+                            postCard(title: language == "ru" ? "Стойка 1" : "Säule 1", ids: [1, 2])
+                            postCard(title: language == "ru" ? "Стойка 2" : "Säule 2", ids: [3, 4])
+                        }
+                        Text(language == "ru" ? "ЧЕТЫРЕ КОЛЕСА" : "VIER RÄDER")
+                            .font(.caption.bold()).foregroundStyle(.white)
+                        VStack(spacing: 8) {
+                            HStack(spacing: 8) {
+                                wheelCard(5, title: language == "ru" ? "Переднее левое" : "Vorne links")
+                                wheelCard(6, title: language == "ru" ? "Переднее правое" : "Vorne rechts")
+                            }
+                            HStack(spacing: 8) {
+                                wheelCard(7, title: language == "ru" ? "Заднее левое" : "Hinten links")
+                                wheelCard(8, title: language == "ru" ? "Заднее правое" : "Hinten rechts")
+                            }
+                        }
+                        Text(language == "ru" ? "Квадратных контуров: \\(scanner.candidateCount). ID ChArUco пока не распознаются." : "Quadratische Konturen: \\(scanner.candidateCount). ChArUco-IDs noch nicht erkannt.")
+                            .font(.caption).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(language == "ru" ? "Тест камеры, не измерение развала-схождения" : "Kameratest, keine Achsvermessung")
+                            .font(.caption2).foregroundStyle(.white.opacity(0.7))
                     }
+                    .padding(14)
                 }
-                Text(language == "ru" ? "1–4: опорные мишени; 5–8: колёса" : "1–4: Referenzmarken; 5–8: Räder")
-                    .font(.caption).foregroundStyle(.white)
-                Text(language == "ru" ? "Кандидатов-квадратов: \\(scanner.candidateCount) (не подтверждённые мишени)" : "Quadratische Kandidaten: \\(scanner.candidateCount) (keine bestätigten Marker)")
-                    .foregroundStyle(.white)
-                Text(language == "ru" ? "Тест контуров камеры. ChArUco ID пока не распознаются. Измерения не реализованы." : "Kamera-Konturtest. ChArUco-IDs noch nicht erkannt. Keine Messung.")
-                    .font(.caption).foregroundStyle(.orange)
                 Button(language == "ru" ? "Начать сканирование" : "Scan starten") {
                     scanner.setTarget(target)
                     scanner.start()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.cyan)
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(Color.cyan)
+                .foregroundStyle(.black)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color(red: 0.04, green: 0.07, blue: 0.12))
             }
-            .padding()
         }
         .onAppear { scanner.requestAccessAndStart(target: target) }
         .onDisappear { scanner.stop() }
     }
-    private func targetTile(_ id: Int) -> some View {
-        Text("\(id)")
-            .font(.headline.bold())
-            .frame(width: 48, height: 36)
-            .background(scanner.detected.contains(id) ? Color.green : Color.gray.opacity(0.4))
+
+    private func postCard(title: String, ids: [Int]) -> some View {
+        VStack(spacing: 8) {
+            Text(title).font(.subheadline.bold()).foregroundStyle(.white)
+            HStack(spacing: 8) {
+                ForEach(ids, id: \.self) { id in markerTile(id) }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(10)
+        .background(Color.white.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func wheelCard(_ id: Int, title: String) -> some View {
+        HStack(spacing: 6) {
+            markerTile(id)
+            Text(title).font(.caption2).foregroundStyle(.white)
+                .lineLimit(2).minimumScaleFactor(0.8)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(7)
+        .background(Color.white.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func markerTile(_ id: Int) -> some View {
+        Text("\\(id)")
+            .font(.subheadline.bold())
+            .frame(width: 32, height: 32)
+            .background(scanner.detected.contains(id) ? Color.green : Color.gray.opacity(0.55))
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 7))
     }
@@ -107,7 +139,7 @@ final class PreviewView: UIView {
     var layerSession: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
     override init(frame: CGRect) {
         super.init(frame: frame)
-        layerSession.videoGravity = .resizeAspectFill
+        layerSession.videoGravity = .resizeAspect
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
