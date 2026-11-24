@@ -30,7 +30,7 @@ struct ContentView: View {
                         .onChange(of: language) { scanner.setLanguage($0) }
 
                         CameraPreview(session: scanner.session)
-                            .frame(height: 230)
+                            .frame(height: 300)
                             .frame(maxWidth: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                             .overlay(alignment: .topLeading) {
@@ -53,6 +53,7 @@ struct ContentView: View {
                         Text(language == "ru" ? "ЧЕТЫРЕ КОЛЕСА" : "VIER RÄDER")
                             .font(.caption.bold()).foregroundStyle(.white)
                         VStack(spacing: 8) {
+                            Text(language == "ru" ? "ПЕРЕД АВТОМОБИЛЯ ↑" : "FAHRZEUGFRONT ↑").font(.caption2).foregroundStyle(.cyan)
                             HStack(spacing: 8) {
                                 wheelCard(5, title: language == "ru" ? "Переднее левое" : "Vorne links")
                                 wheelCard(6, title: language == "ru" ? "Переднее правое" : "Vorne rechts")
@@ -62,9 +63,11 @@ struct ContentView: View {
                                 wheelCard(8, title: language == "ru" ? "Заднее правое" : "Hinten rechts")
                             }
                         }
-                        Text(language == "ru" ? "Найдено мишеней: \(scanner.detected.count)" : "Erkannte Tafeln: \(scanner.detected.count)")
+                        Text(language == "ru" ? "Сохранено мишеней: \(scanner.detected.count) из 8" : "Gespeicherte Tafeln: \(scanner.detected.count) von 8")
                             .font(.caption).foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
+                        Text(scanner.detected.isSuperset(of: Set(1...4)) ? (language == "ru" ? "4 опоры найдены. Геометрическая калибровка ещё не выполнена — измерения заблокированы." : "4 Referenzen erkannt. Geometrische Kalibrierung fehlt — Messung gesperrt.") : (language == "ru" ? "Сначала найдите четыре опорные мишени на стойках" : "Zuerst vier Referenztafeln erfassen"))
+                            .font(.caption).foregroundStyle(.yellow)
                         Text(language == "ru" ? "Тест камеры, не измерение развала-схождения" : "Kameratest, keine Achsvermessung")
                             .font(.caption2).foregroundStyle(.white.opacity(0.7))
                     }
@@ -139,7 +142,7 @@ final class PreviewView: UIView {
     var layerSession: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
     override init(frame: CGRect) {
         super.init(frame: frame)
-        layerSession.videoGravity = .resizeAspect
+        layerSession.videoGravity = .resizeAspectFill
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
@@ -148,6 +151,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     let session = AVCaptureSession()
     @Published var status = "Ожидание разрешения камеры"
     @Published var detected: Set<Int> = []
+    @Published var visible: Set<Int> = []
     @Published var candidateCount = 0
     private let queue = DispatchQueue(label: "autoklinik.camera")
     private let voice = AVSpeechSynthesizer()
@@ -222,10 +226,11 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
         let ids = ArucoBridge.markerIDs(in: buffer).map { $0.intValue }
         let boards = Set(ids.compactMap { MarkerBoardConfiguration.boardNumber(forArUcoID: $0) })
         DispatchQueue.main.async {
-            self.detected = boards
+            self.visible = boards
+            self.detected.formUnion(boards)
             self.candidateCount = ids.count
-            self.status = self.localized("Найдено ArUco: \(ids.count), мишеней: \(boards.count)",
-                                         "ArUco erkannt: \(ids.count), Tafeln: \(boards.count)")
+            self.status = self.localized("В кадре ArUco: \(ids.count), мишеней: \(boards.count); сохранено: \(self.detected.count)",
+                                         "ArUco sichtbar: \(ids.count), Tafeln: \(boards.count); gespeichert: \(self.detected.count)")
         }
     }
     private func speak(_ text: String) {
