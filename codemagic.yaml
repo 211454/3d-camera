@@ -16,3 +16,31 @@ workflows:
     artifacts:
       - "**/build/**/*.app"
       - "/tmp/xcodebuild_logs/*.log"
+
+  ios-iphone-unsigned:
+    name: AUTOKLINIK 3D Camera iPhone unsigned IPA for AltStore
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    scripts:
+      - name: Install XcodeGen
+        script: brew install xcodegen
+      - name: Generate Xcode project
+        script: xcodegen generate
+      - name: Build unsigned iPhone app
+        script: |
+          set -e
+          xcodebuild -project AUTOKLINIKCamera.xcodeproj -scheme AUTOKLINIKCamera -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$CM_BUILD_DIR/DerivedData" CODE_SIGNING_ALLOWED=NO build
+      - name: Package unsigned IPA for AltStore
+        script: |
+          set -e
+          APP="$CM_BUILD_DIR/DerivedData/Build/Products/Release-iphoneos/AUTOKLINIKCamera.app"
+          test -d "$APP"
+          mkdir -p "$CM_BUILD_DIR/ipa/Payload"
+          cp -R "$APP" "$CM_BUILD_DIR/ipa/Payload/"
+          cd "$CM_BUILD_DIR/ipa"
+          zip -qry AUTOKLINIKCamera-unsigned.ipa Payload
+    artifacts:
+      - "ipa/*.ipa"
+      - "/tmp/xcodebuild_logs/*.log"
