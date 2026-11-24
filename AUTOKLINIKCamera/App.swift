@@ -70,6 +70,7 @@ struct CameraPreview: UIViewRepresentable {
 struct ScannerView: View {
     @StateObject private var model = ScannerModel()
     @State private var showCalibration = false
+    @State private var showWorkflow = false
     private let markerLabels = ["Левая стойка · верх", "Левая стойка · низ", "Правая стойка · верх", "Правая стойка · низ", "Переднее левое", "Переднее правое", "Заднее левое", "Заднее правое"]
 
     var body: some View {
@@ -92,6 +93,8 @@ struct ScannerView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
+            Button("Пошаговая проверка автомобиля") { showWorkflow = true }
+                .buttonStyle(.borderedProminent)
             if model.found.count == 8 {
                 Button("Далее — калибровка") { showCalibration = true }
                     .buttonStyle(.borderedProminent)
@@ -114,6 +117,9 @@ struct ScannerView: View {
         .padding()
         .sheet(isPresented: $showCalibration) {
             CalibrationView()
+        }
+        .sheet(isPresented: $showWorkflow) {
+            GuidedMeasurementView(model: model)
         }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
@@ -164,6 +170,86 @@ struct CalibrationView: View {
                 }
             }
             .navigationTitle("Калибровка")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+ 
+// Guided capture protocol. Each checkpoint records QR identities only;
+// it does NOT claim to measure marker poses, runout, toe, camber or caster.
+struct GuidedMeasurementView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var model: ScannerModel
+    @State private var step = 0
+    @State private var snapshots: [Set<String>] = []
+    @State private var started = false
+
+    private let instructions = [
+        "Автомобиль на земле, руль прямо. Сканируйте маркеры в исходном положении.",
+        "Прокатите автомобиль назад и остановите. Затем обойдите автомобиль с iPhone и сканируйте.",
+        "Верните автомобиль в исходное положение. Затем снова обойдите и сканируйте.",
+        "Поверните руль влево, остановите автомобиль и обойдите его с камерой.",
+        "Поверните руль вправо, остановите автомобиль и обойдите его с камерой."
+    ]
+    private let titles = ["Исходное положение", "После прокатки назад", "Возврат на место", "Руль влево", "Руль вправо"]
+    private var required: Set<String> { Set((1...8).map { "AUTOKLINIK-3D-\($0)" }) }
+    private var complete: Bool { required.isSubset(of: model.found) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Один мастер · один iPhone") {
+                    Text("Четыре неподвижных маркера 1–4 на двух стойках; четыре съёмных маркера 5–8 на колёсах. Номинальный размер QR — 155 мм.")
+                    Text("Во время прокатки телефон не снимает: сначала переместите машину, затем сканируйте.")
+                }
+                if step < instructions.count {
+                    Section("Шаг \(step + 1) из \(instructions.count): \(titles[step])") {
+                        Text(instructions[step])
+                        Text("Распознано на этом шаге: \(model.found.intersection(required).count) из 8")
+                        if !started {
+                            Button("Начать сканирование шага") {
+                                model.reset()
+                                started = true
+                            }
+                        } else {
+                            if complete {
+                                Label("Все 8 идентификаторов обнаружены", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            } else {
+                                Text("Обойдите машину и покажите камере оставшиеся маркеры.")
+                            }
+                            Button(step == instructions.count - 1 ? "Сохранить последний этап" : "Сохранить этап и продолжить") {
+                                snapshots.append(model.found.intersection(required))
+                                step += 1
+                                started = false
+                                model.reset()
+                            }
+                            .disabled(!complete)
+                        }
+                    }
+                } else {
+                    Section("Протокол съёмки завершён") {
+                        Label("Сохранены 5 этапов распознавания QR", systemImage: "checkmark.circle")
+                        Text("Это проверка пошагового сценария, а не измерение углов. Координаты углов QR, пространственная калибровка, компенсация биения и вычисление развала/схождения/кастера ещё не реализованы.")
+                        Button("Начать заново") {
+                            snapshots.removeAll()
+                            step = 0
+                            started = false
+                            model.reset()
+                        }
+                    }
+                }
+                Section("Безопасность") {
+                    Text("Перемещайте автомобиль только на ровной безопасной площадке, без человека перед или за колёсами. Не используйте полученные данные для регулировки углов: измерительная точность не подтверждена.")
+                        .font(.caption)
+                }
+            }
+            .navigationTitle("Проверка автомобиля")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Закрыть") { dismiss() }
