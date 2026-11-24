@@ -31,4 +31,35 @@
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
     return result;
 }
+
++ (NSArray<NSDictionary<NSString *, NSNumber *> *> *)markerObservationsInPixelBuffer:(CVPixelBufferRef)pixelBuffer {
+    if (!pixelBuffer) return @[];
+    CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    NSMutableArray<NSDictionary<NSString *, NSNumber *> *> *result = [NSMutableArray array];
+    const size_t width = CVPixelBufferGetWidth(pixelBuffer);
+    const size_t height = CVPixelBufferGetHeight(pixelBuffer);
+    void *bytes = CVPixelBufferGetBaseAddress(pixelBuffer);
+    if (bytes && width > 0 && height > 0 && CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA) {
+        cv::Mat bgra((int)height, (int)width, CV_8UC4, bytes, CVPixelBufferGetBytesPerRow(pixelBuffer));
+        cv::Mat gray;
+        cv::cvtColor(bgra, gray, cv::COLOR_BGRA2GRAY);
+        cv::aruco::ArucoDetector detector(cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_250));
+        std::vector<int> ids;
+        std::vector<std::vector<cv::Point2f>> corners;
+        detector.detectMarkers(gray, corners, ids);
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (corners[i].size() != 4) continue;
+            cv::Point2f center(0, 0);
+            for (const auto &point : corners[i]) center += point;
+            center *= 0.25f;
+            cv::Point2f edge = corners[i][1] - corners[i][0];
+            float length = cv::norm(edge);
+            float angle = std::atan2(edge.y, edge.x) * 180.0f / (float)CV_PI;
+            [result addObject:@{@"id": @(ids[i]), @"x": @(center.x), @"y": @(center.y),
+                                @"edgePixels": @(length), @"angleDegrees": @(angle)}];
+        }
+    }
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    return result;
+}
 @end
