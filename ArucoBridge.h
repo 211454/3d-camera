@@ -5,5 +5,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ArucoBridge : NSObject
 + (NSArray<NSNumber *> *)markerIDsInPixelBuffer:(CVPixelBufferRef)pixelBuffer;
 + (NSArray<NSDictionary<NSString *, NSNumber *> *> *)markerObservationsInPixelBuffer:(CVPixelBufferRef)pixelBuffer;
++ (NSArray<NSDictionary<NSString *, NSNumber *> *> *)markerPosesInPixelBuffer:(CVPixelBufferRef)pixelBuffer
+                                                              fx:(double)fx fy:(double)fy cx:(double)cx cy:(double)cy;
 @end
 NS_ASSUME_NONNULL_END
