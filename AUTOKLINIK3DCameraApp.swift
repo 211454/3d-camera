@@ -22,7 +22,7 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 12) {
-                        Text("AUTOKLINIK 3D CAMERA")
+                        Text(scanner.spatialReady ? (language == "ru" ? "AUTOKLINIK • ТЕСТ ИЗМЕРЕНИЙ" : "AUTOKLINIK • MESSTEST") : (language == "ru" ? "AUTOKLINIK • КАЛИБРОВКА" : "AUTOKLINIK • KALIBRIERUNG"))
                             .font(.headline.bold()).foregroundStyle(.white)
                         Picker("Язык / Sprache", selection: $language) {
                             Text("Русский").tag("ru")
@@ -32,7 +32,7 @@ struct ContentView: View {
                         .onChange(of: language) { scanner.setLanguage($0) }
 
                         CameraPreview(session: scanner.session)
-                            .frame(height: 300)
+                            .frame(height: scanner.spatialReady ? 160 : 300)
                             .frame(maxWidth: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                             .overlay(alignment: .topLeading) {
@@ -73,8 +73,8 @@ struct ContentView: View {
                         Text(language == "ru" ? "Сохранено мишеней: \(scanner.detected.count) из 8" : "Gespeicherte Tafeln: \(scanner.detected.count) von 8")
                             .font(.caption).foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(scanner.detected.isSuperset(of: Set(1...4)) ? (language == "ru" ? "4 опоры найдены. Геометрическая калибровка ещё не выполнена — измерения заблокированы." : "4 Referenzen erkannt. Geometrische Kalibrierung fehlt — Messung gesperrt.") : (language == "ru" ? "Сначала найдите четыре опорные мишени на стойках" : "Zuerst vier Referenztafeln erfassen"))
-                            .font(.caption).foregroundStyle(.yellow)
+                        Text(scanner.spatialReady ? (language == "ru" ? "Четыре опоры связаны • тест пространственных координат" : "Vier Referenzen verbunden • Raumkoordinatentest") : (language == "ru" ? "Связано опор: \(scanner.linkedBoards.count)/4. Покажите ID 0, затем соседние опоры вместе." : "Referenzen verbunden: \(scanner.linkedBoards.count)/4. ID 0, dann benachbarte Referenzen gemeinsam zeigen."))
+                            .font(.caption).foregroundStyle(scanner.spatialReady ? Color.green : Color.yellow)
                         Text(language == "ru" ? "Тест камеры, не измерение развала-схождения" : "Kameratest, keine Achsvermessung")
                             .font(.caption2).foregroundStyle(.white.opacity(0.7))
                     }
@@ -233,6 +233,10 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     @Published var boardImageMeasurements: [Int: String] = [:]
     @Published var relativeTests: [Int: String] = [:]
     @Published var liveRelativeTests: Set<Int> = []
+    @Published var linkedBoards: Set<Int> = []
+    @Published var spatialReady = false
+    private var worldRefs: [Int: simd_float4x4] = [:]
+    private var links: [Int: [Int: simd_float4x4]] = [:]
     private let queue = DispatchQueue(label: "autoklinik.camera")
     private let voice = AVSpeechSynthesizer()
     private var target = 1
@@ -318,13 +322,41 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
                 }
             }
         }
+        let refs = poses.keys.filter { (0..<32).contains($0) }.sorted()
+        // Retain same-frame rigid transforms, including connections observed before the origin.
+        for a in refs {
+            for b in refs where a != b {
+                guard let pa = poses[a], let pb = poses[b] else { continue }
+                if links[a]?[b] == nil {
+                    links[a, default: [:]][b] = simd_inverse(pa) * pb
+                }
+            }
+        }
+        // Fixed origin is ArUco ID 0. Never silently change it when the phone moves.
+        if poses[0] != nil { worldRefs[0] = matrix_identity_float4x4 }
+        var expanded = true
+        while expanded {
+            expanded = false
+            for a in Array(worldRefs.keys).sorted() {
+                guard let wa = worldRefs[a], let neighbors = links[a] else { continue }
+                for b in neighbors.keys.sorted() where worldRefs[b] == nil {
+                    guard let ab = neighbors[b] else { continue }
+                    worldRefs[b] = wa * ab
+                    expanded = true
+                }
+            }
+        }
+        let linked = Set(worldRefs.keys.compactMap { MarkerBoardConfiguration.boardNumber(forArUcoID: $0) })
+        let ready = linked.isSuperset(of: Set(1...4))
         var relative: [Int: String] = [:]
-        if let ref = poses.keys.filter({ (0..<32).contains($0) }).min(), let base = poses[ref] {
-            for id in poses.keys.sorted() where (32..<64).contains(id) {
-                guard let board = MarkerBoardConfiguration.boardNumber(forArUcoID: id), relative[board] == nil, let pose = poses[id] else { continue }
-                let p = simd_inverse(base) * pose
-                let t = p.columns.3
-                relative[board] = String(format: "ID %d→%d: %.1f / %.1f / %.1f мм", ref,id,t.x,t.y,t.z)
+        if let ref = refs.first(where: { worldRefs[$0] != nil }),
+           let base = poses[ref], let world = worldRefs[ref] {
+            let worldFromCamera = world * simd_inverse(base)
+            // Fixed square ID per wheel board avoids jumps between different printed squares.
+            for id in [32,40,48,56] {
+                guard let board = MarkerBoardConfiguration.boardNumber(forArUcoID: id), let pose = poses[id] else { continue }
+                let t = (worldFromCamera * pose).columns.3
+                relative[board] = String(format: "X %.1f Y %.1f Z %.1f мм", t.x,t.y,t.z)
             }
         }
         let ids = observations.compactMap { $0["id"]?.intValue }
@@ -342,6 +374,8 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
         let boards = Set(ids.compactMap { MarkerBoardConfiguration.boardNumber(forArUcoID: $0) })
         DispatchQueue.main.async {
             self.visible = boards
+            self.linkedBoards = linked
+            self.spatialReady = ready
             self.liveRelativeTests = Set(relative.keys)
             for (board, value) in relative { self.relativeTests[board] = value }
             for (board, value) in measurements { self.boardImageMeasurements[board] = value }
