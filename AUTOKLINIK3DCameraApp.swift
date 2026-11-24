@@ -24,105 +24,92 @@ struct ContentView: View {
     private func tr(_ ru: String, _ de: String) -> String { language == "ru" ? ru : de }
     private var names: [String] { [tr("Переднее левое","Vorne links"),tr("Переднее правое","Vorne rechts"),tr("Заднее левое","Hinten links"),tr("Заднее правое","Hinten rechts")] }
 
+    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
-        GeometryReader { geometry in
-        VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("AUTOKLINIK").font(.title2.bold()).foregroundStyle(.white)
-                    Text("3D  •  "+tr("ГЕОМЕТРИЯ КОЛЁС","ACHSVERMESSUNG")).font(.caption2.bold()).foregroundStyle(.cyan)
-                }
-                Spacer()
-                Menu {
-                    Button("Русский") { language = "ru"; scanner.setLanguage("ru") }
-                    Button("Deutsch") { language = "de"; scanner.setLanguage("de") }
-                } label: { Image(systemName: "globe").font(.title2).foregroundStyle(.white) }
-            }.padding(14)
-            HStack(spacing: 4) {
-                Button { calibrationMode = true; adjustment = false; cameraFull = true; scanner.start() } label: { step("1",tr("Калибровка","Kalibrierung"),calibrationMode) }.buttonStyle(.plain)
-                Button { calibrationMode = false; adjustment = false; cameraFull = false } label: { step("2",tr("Измерения","Messung"),!calibrationMode && !adjustment) }.buttonStyle(.plain).disabled(!scanner.spatialReady)
-                Button { calibrationMode = false; before = scanner.relativeTests; adjustment = true; cameraFull = false } label: { step("3",tr("Настройка","Einstellung"),adjustment) }.buttonStyle(.plain).disabled(!scanner.spatialReady)
-            }.padding(.horizontal,10)
-            ScrollView {
-                VStack(spacing: 10) {
-                    HStack {
-                        Label(scanner.spatialReady ? tr("Опоры связаны","Referenzen verbunden") : tr("Привязка опор","Referenzen erfassen"), systemImage: scanner.spatialReady ? "checkmark.circle" : "scope")
-                            .foregroundStyle(scanner.spatialReady ? Color.green : Color.orange)
+        GeometryReader { geo in
+            ZStack {
+                navy.ignoresSafeArea()
+                CameraPreview(session: scanner.session)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .opacity(calibrationMode || cameraFull ? 1 : 0)
+                    .allowsHitTesting(false)
+                if calibrationMode || cameraFull {
+                    VStack {
                         Spacer()
-                        Text("\(scanner.linkedBoards.count)/4").monospacedDigit().foregroundStyle(.white)
-                    }.font(.caption.bold())
-                    ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.green)
-                    ZStack(alignment: .topLeading) {
-                        LiftOverview(detected: scanner.detected, visible: scanner.visible).frame(height: max(300, geometry.size.height * 0.48)).frame(maxWidth: .infinity)
-                        Text(tr("3D • СХЕМА","3D • SCHEMA")).font(.caption2.bold()).foregroundStyle(.cyan).padding(10)
-                        VStack {
+                        Text(scanner.status).font(.subheadline.weight(.semibold))
+                        Text(tr("Опоры","Referenzen") + "  \(scanner.linkedBoards.count)/4")
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                        ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.cyan)
+                        Text(tr("Покажите соседние опоры вместе","Benachbarte Referenzen gemeinsam zeigen"))
+                            .font(.caption)
+                        Button { scanner.start() } label: {
+                            Label(tr("Запустить камеру","Kamera starten"), systemImage: "video.fill")
+                                .frame(maxWidth: .infinity).padding(10)
+                        }.buttonStyle(.borderedProminent).tint(.blue)
+                    }.padding(16).background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
+                        .padding(12).padding(.bottom, 68)
+                } else {
+                    VStack(spacing: 10) {
+                        LiftOverview(detected: scanner.detected, visible: scanner.visible)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                        HStack {
+                            Label(tr("Опоры","Referenzen") + " \(scanner.linkedBoards.count)/4", systemImage: "scope")
                             Spacer()
-                            HStack {
-                                Label(tr("Опоры","Referenzen"), systemImage: "circle.fill").foregroundStyle(.green)
-                                Spacer()
-                                Text(tr("Модель не в масштабе","Nicht maßstabsgetreu")).foregroundStyle(.gray)
-                            }.font(.caption2).padding(10)
+                            Label("\(scanner.detected.count)/8", systemImage: "qrcode.viewfinder")
+                        }.font(.subheadline.bold()).foregroundStyle(.cyan)
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(5...8, id: \.self) { id in
+                                Button { selectedWheel = id; scanner.setTarget(id) } label: { wheelCard(id) }
+                                    .buttonStyle(.plain)
+                            }
                         }
-                    }.background(panel).clipShape(RoundedRectangle(cornerRadius: 14))
-                    VStack(alignment: .leading, spacing: 8) {
-                        CameraPreview(session: scanner.session).frame(maxWidth: .infinity).frame(height: max(240, geometry.size.height * 0.40)).clipShape(RoundedRectangle(cornerRadius: 9))
-                        VStack(alignment: .leading, spacing: 7) {
-                            Label(tr("КАМЕРА LIVE","KAMERA LIVE"),systemImage: "video.fill").foregroundStyle(.cyan).font(.caption.bold())
-                            Text(scanner.status).font(.caption).foregroundStyle(.white)
-                            Text(tr("Мишени: ","Tafeln: ")+"\(scanner.detected.count)/8").font(.caption2).foregroundStyle(.green)
+                        if adjustment {
+                            Text(tr("До: ","Vorher: ") + (before[selectedWheel] ?? "—"))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
-                        Spacer(minLength: 0)
-                    }.padding(9).background(panel).clipShape(RoundedRectangle(cornerRadius: 12))
-                    if !scanner.spatialReady {
-                        Text(tr("Покажите ID 0, затем соседние опоры вместе.","ID 0, dann benachbarte Referenzen gemeinsam zeigen.")).font(.caption).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                        Text(tr("Тест координат • не для регулировки","Koordinatentest • keine Fahrzeugeinstellung"))
+                            .font(.caption2).foregroundStyle(.orange)
+                    }.padding(12).padding(.top, 70).padding(.bottom, 62)
+                }
+                VStack(spacing: 0) {
                     HStack {
-                        Text(tr("ИЗМЕРЕНИЯ КОЛЁС","RADMESSUNGEN")).font(.caption.bold()).foregroundStyle(.white)
-                        Spacer()
-                        Text(tr("ТЕСТ • мм","TEST • mm")).font(.caption2.bold()).foregroundStyle(.orange)
-                    }
-                    LazyVGrid(columns: [GridItem(.flexible()),GridItem(.flexible())],spacing: 8) {
-                        ForEach(5...8,id: \.self) { id in
-                            Button { selectedWheel = id } label: { wheelCard(id) }.buttonStyle(.plain)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("AUTOKLINIK 3D").font(.title2.bold())
+                            Text(tr("ГЕОМЕТРИЯ КОЛЁС","ACHSVERMESSUNG")).font(.caption2.bold()).foregroundStyle(.cyan)
                         }
-                    }
-                    if adjustment && scanner.spatialReady {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(names[selectedWheel-5]).font(.headline).foregroundStyle(.white)
-                            Text(tr("До: ","Vorher: ")+(before[selectedWheel] ?? "—")).foregroundStyle(.gray)
-                            Text(tr("Сейчас: ","Jetzt: ")+(scanner.relativeTests[selectedWheel] ?? "—")).foregroundStyle(scanner.liveRelativeTests.contains(selectedWheel) ? Color.green : Color.gray)
-                            Text(tr("Развал и схождение пока недоступны: требуется проверка калибровки.","Sturz und Spur noch nicht verfügbar: Kalibrierprüfung erforderlich.")).foregroundStyle(.orange)
-                        }.font(.caption).frame(maxWidth: .infinity,alignment: .leading).padding(12).background(panel).clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    Text(tr("Экспериментальные координаты мишеней. Не использовать для регулировки автомобиля.","Experimentelle Markerkoordinaten. Nicht zur Fahrzeugeinstellung verwenden.")).font(.caption2).foregroundStyle(.orange)
-                }.padding(12)
-            }
-            HStack(spacing: 8) {
-                Button { scanner.start(); cameraFull = true } label: {
-                    Label(tr("Камера","Kamera"),systemImage: "camera").frame(maxWidth: .infinity)
-                }.buttonStyle(.bordered).tint(.cyan)
-                Button {
-                    if !adjustment { before = scanner.relativeTests }
-                    adjustment.toggle()
-                } label: {
-                    Label(adjustment ? tr("Измерения","Messung") : tr("Режим настройки","Einstellung"),systemImage: "slider.horizontal.3").frame(maxWidth: .infinity)
-                }.buttonStyle(.borderedProminent).tint(.cyan).disabled(!scanner.spatialReady)
-            }.font(.caption.bold()).padding(12).background(panel)
-        }.frame(width: geometry.size.width, height: geometry.size.height)
-        }.background(navy.ignoresSafeArea()).preferredColorScheme(.dark)
-        .onChange(of: scanner.spatialReady) { ready in if ready { calibrationMode = false; cameraFull = false } }
-        .fullScreenCover(isPresented: $cameraFull) {
-            ZStack(alignment: .top) {
-                CameraPreview(session: scanner.session).ignoresSafeArea()
-                VStack(spacing: 12) {
-                    HStack { Text(scanner.status).font(.caption).foregroundStyle(.white); Spacer(); Button { cameraFull = false } label: { Image(systemName: "xmark.circle.fill").font(.largeTitle).foregroundStyle(.white) } }
-                    ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.green)
-                    Text(tr("Опоры: ","Referenzen: ") + "\(scanner.linkedBoards.count)/4").foregroundStyle(.white)
-                }.padding().background(.black.opacity(0.7))
-            }.background(Color.black).onAppear { scanner.start() }
+                        Spacer()
+                        Menu {
+                            Button("Русский") { language = "ru"; scanner.setLanguage("ru") }
+                            Button("Deutsch") { language = "de"; scanner.setLanguage("de") }
+                        } label: { Image(systemName: "globe").font(.title2).padding(8) }
+                    }.padding(12).background(navy.opacity(0.94))
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Button { calibrationMode = true; cameraFull = false; adjustment = false; scanner.start() } label: {
+                            step("1",tr("Калибровка","Kalibrierung"),calibrationMode)
+                        }.buttonStyle(.plain)
+                        Button { if scanner.spatialReady { calibrationMode = false; adjustment = false; cameraFull = false } else { calibrationMode = true; scanner.start() } } label: {
+                            step("2",tr("Измерения","Messung"),!calibrationMode && !adjustment)
+                        }.buttonStyle(.plain)
+                        Button { cameraFull.toggle(); scanner.start() } label: {
+                            step("3",tr("Камера","Kamera"),cameraFull)
+                        }.buttonStyle(.plain)
+                    }.padding(12).background(navy.opacity(0.96))
+                }
+            }.frame(width: geo.size.width, height: geo.size.height)
         }
-        .onAppear { scanner.requestAccessAndStart(target: 1) }
-        .onDisappear { scanner.stop() }
+        .foregroundStyle(.white).preferredColorScheme(.dark)
+        .background(navy.ignoresSafeArea())
+        .onAppear { calibrationMode = !scanner.spatialReady; scanner.requestAccessAndStart(target: 1) }
+        .onChange(of: scanner.spatialReady) { ready in
+            if ready { calibrationMode = false; cameraFull = false }
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { scanner.start() }
+            else if phase == .background { scanner.stop() }
+        }
     }
     private func step(_ number: String,_ title: String,_ active: Bool) -> some View {
         HStack(spacing: 4) {
@@ -185,7 +172,7 @@ struct LiftOverview: UIViewRepresentable {
                 scene.rootNode.addChildNode(n)
             }
         }
-        let points: [(Float,Float,Float)] = [(-2,0.9,1.25),(-2,0.9,-1.25),(2,0.9,1.25),(2,0.9,-1.25),(-1.1,0.42,1.25),(1.1,0.42,1.25),(-1.1,0.42,-1.25),(1.1,0.42,-1.25)]
+        let points: [(Float,Float,Float)] = [(-2.20,0.9,0),(-2.20,1.8,0),(2.20,0.9,0),(2.20,1.8,0),(-1.1,0.42,1.25),(1.1,0.42,1.25),(-1.1,0.42,-1.25),(1.1,0.42,-1.25)]
         for (i,p) in points.enumerated() {
             let g = SCNBox(width: 0.30, height: 0.30, length: 0.035, chamferRadius: 0.008)
             let n = SCNNode(geometry: g)
@@ -288,7 +275,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     private func configureAndStart() {
         queue.async {
             if !self.configured {
-                guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) ?? AVCaptureDevice.default(for: .video),
                       let input = try? AVCaptureDeviceInput(device: camera),
                       self.session.canAddInput(input) else {
                     DispatchQueue.main.async { self.status = "Камера недоступна" }
