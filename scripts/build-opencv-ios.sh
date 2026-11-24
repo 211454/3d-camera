@@ -14,3 +14,9 @@ python3 opencv/platforms/ios/build_framework.py "$CM_BUILD_DIR/opencv-output" \
 FOUND=$(find "$CM_BUILD_DIR/opencv-output" -name 'opencv2.framework' -type d -print -quit)
 test -n "$FOUND" || { echo "ERROR: opencv2.framework not found"; exit 1; }
 cp -R "$FOUND" "$REPO_ROOT/opencv2.framework"
+
+HEADERS="$REPO_ROOT/opencv2.framework/Headers"
+for header in core.hpp imgproc.hpp objdetect/aruco_detector.hpp objdetect/aruco_dictionary.hpp; do
+  test -f "$HEADERS/$header" || { echo "ERROR: Missing OpenCV header: $HEADERS/$header"; exit 1; }
+done
+echo "OpenCV framework headers verified"
