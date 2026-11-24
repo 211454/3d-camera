@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Vision
 
 @main
 struct AutoKlinik3DCameraApp: App {
@@ -66,9 +67,9 @@ struct ContentView: View {
                 }
                 Text(language == "ru" ? "1–4: опорные мишени; 5–8: колёса" : "1–4: Referenzmarken; 5–8: Räder")
                     .font(.caption).foregroundStyle(.white)
-                Text((language == "ru" ? "Найдено: " : "Erkannt: ") + scanner.detected.sorted().map(String.init).joined(separator: ", "))
+                Text(language == "ru" ? "Кандидатов-квадратов: \\(scanner.candidateCount) (не подтверждённые мишени)" : "Quadratische Kandidaten: \\(scanner.candidateCount) (keine bestätigten Marker)")
                     .foregroundStyle(.white)
-                Text(language == "ru" ? "ДЕМО интерфейса. ChArUco пока не распознаются; сканер работает только со старыми QR. Измерения не реализованы." : "UI-Demo. ChArUco-Erkennung fehlt; Scanner unterstützt nur alte QR-Codes. Keine Messung.")
+                Text(language == "ru" ? "Тест контуров камеры. ChArUco ID пока не распознаются. Измерения не реализованы." : "Kamera-Konturtest. ChArUco-IDs noch nicht erkannt. Keine Messung.")
                     .font(.caption).foregroundStyle(.orange)
                 Button(language == "ru" ? "Начать сканирование" : "Scan starten") {
                     scanner.setTarget(target)
@@ -111,16 +112,17 @@ final class PreviewView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
-final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputObjectsDelegate {
+final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     let session = AVCaptureSession()
     @Published var status = "Ожидание разрешения камеры"
     @Published var detected: Set<Int> = []
+    @Published var candidateCount = 0
     private let queue = DispatchQueue(label: "autoklinik.camera")
     private let voice = AVSpeechSynthesizer()
     private var target = 1
     private var language = "ru"
     private var configured = false
-    private var announced: Set<Int> = []
+    private var lastFrameTime: CFTimeInterval = 0
 
     func requestAccessAndStart(target: Int) {
         self.target = target
@@ -160,15 +162,15 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
                 }
                 self.session.beginConfiguration()
                 self.session.addInput(input)
-                let output = AVCaptureMetadataOutput()
+                let output = AVCaptureVideoDataOutput()
+                output.alwaysDiscardsLateVideoFrames = true
                 guard self.session.canAddOutput(output) else {
                     self.session.commitConfiguration()
                     DispatchQueue.main.async { self.status = "Сканер недоступен" }
                     return
                 }
                 self.session.addOutput(output)
-                output.setMetadataObjectsDelegate(self, queue: .main)
-                output.metadataObjectTypes = [.qr]
+                output.setSampleBufferDelegate(self, queue: self.queue)
                 self.session.commitConfiguration()
                 self.configured = true
             }
@@ -179,25 +181,29 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureMetadataOutputOb
             }
         }
     }
-    func metadataOutput(_ output: AVCaptureMetadataOutput,
-                        didOutput metadataObjects: [AVMetadataObject],
-                        from connection: AVCaptureConnection) {
-        let ids = metadataObjects.compactMap { $0 as? AVMetadataMachineReadableCodeObject }
-            .compactMap { $0.stringValue }
-            .compactMap { raw -> Int? in
-                guard raw.hasPrefix("AUTOKLINIK-3D:"),
-                      let id = Int(raw.dropFirst("AUTOKLINIK-3D:".count)),
-                      (1...8).contains(id) else { return nil }
-                return id
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        // Preliminary visual candidate detection. This does NOT decode ArUco IDs.
+        let now = CACurrentMediaTime()
+        guard now - lastFrameTime >= 0.4 else { return }
+        lastFrameTime = now
+        guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let request = VNDetectRectanglesRequest()
+        request.maximumObservations = 12
+        request.minimumConfidence = 0.65
+        request.minimumAspectRatio = 0.75
+        request.maximumAspectRatio = 1.0
+        request.minimumSize = 0.035
+        do {
+            try VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
+            let count = request.results?.count ?? 0
+            DispatchQueue.main.async {
+                self.candidateCount = count
+                self.status = self.localized("Квадратных контуров: \\(count). ID пока не определены",
+                                             "Quadratische Konturen: \\(count). IDs noch unbekannt")
             }
-        for id in ids {
-            detected.insert(id)
-            status = localized("Обнаружен маркер №\(id)", "Marker Nr. \(id) erkannt")
-            if id == target && !announced.contains(id) {
-                announced.insert(id)
-                speak(localized("Маркер номер \(id) найден", "Marker Nummer \(id) erkannt"))
-                if id < 8 { target = id + 1; speak(localized("Наведите камеру на маркер номер \(target)", "Richten Sie die Kamera auf Marker Nummer \(target)")) }
-                else { speak(localized("Все восемь маркеров распознаны", "Alle acht Marker wurden erkannt")) }
+        } catch {
+            DispatchQueue.main.async {
+                self.status = self.localized("Ошибка анализа кадра", "Bildanalyse fehlgeschlagen")
             }
         }
     }
