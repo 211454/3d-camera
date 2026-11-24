@@ -37,7 +37,22 @@ struct ContentView: View {
                             .background(.black.opacity(0.7))
                             .foregroundStyle(.white)
                     }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                Text(language == "ru" ? "Схема теста: 4 опорные мишени + 4 колеса" : "Testansicht: 4 Referenzmarken + 4 Räder")
+                    .font(.subheadline.bold()).foregroundStyle(.white)
+                HStack(spacing: 12) {
+                    VStack(spacing: 8) {
+                        Text("ОПОРЫ 1–4").font(.caption).foregroundStyle(.white)
+                        HStack { targetTile(1); targetTile(2) }
+                        HStack { targetTile(3); targetTile(4) }
+                    }
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Text("КОЛЁСА 5–8").font(.caption).foregroundStyle(.white)
+                        HStack { targetTile(5); targetTile(6) }
+                        HStack { targetTile(7); targetTile(8) }
+                    }
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 8) {
                     ForEach(1...8, id: \.self) { number in
                         Button("№\(number)") {
                             target = number
@@ -49,11 +64,11 @@ struct ContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
-                Text(language == "ru" ? "1–2: стойки спереди; 3–6: колёса; 7–8: стойки сзади" : "1–2: Lift vorne; 3–6: Räder; 7–8: Lift hinten")
+                Text(language == "ru" ? "1–4: опорные мишени; 5–8: колёса" : "1–4: Referenzmarken; 5–8: Räder")
                     .font(.caption).foregroundStyle(.white)
                 Text((language == "ru" ? "Найдено: " : "Erkannt: ") + scanner.detected.sorted().map(String.init).joined(separator: ", "))
                     .foregroundStyle(.white)
-                Text(language == "ru" ? "Тест распознавания: геометрические измерения ещё не реализованы" : "Erkennungstest: Geometriemessung noch nicht implementiert")
+                Text(language == "ru" ? "ДЕМО интерфейса. ChArUco пока не распознаются; сканер работает только со старыми QR. Измерения не реализованы." : "UI-Demo. ChArUco-Erkennung fehlt; Scanner unterstützt nur alte QR-Codes. Keine Messung.")
                     .font(.caption).foregroundStyle(.orange)
                 Button(language == "ru" ? "Начать сканирование" : "Scan starten") {
                     scanner.setTarget(target)
@@ -66,6 +81,14 @@ struct ContentView: View {
         }
         .onAppear { scanner.requestAccessAndStart(target: target) }
         .onDisappear { scanner.stop() }
+    }
+    private func targetTile(_ id: Int) -> some View {
+        Text("\(id)")
+            .font(.headline.bold())
+            .frame(width: 48, height: 36)
+            .background(scanner.detected.contains(id) ? Color.green : Color.gray.opacity(0.4))
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 }
 
