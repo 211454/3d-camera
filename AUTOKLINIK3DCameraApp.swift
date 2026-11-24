@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import Vision
 import SceneKit
+import simd
 
 @main
 struct AutoKlinik3DCameraApp: App {
@@ -116,7 +117,8 @@ struct ContentView: View {
             markerTile(id)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.caption2).foregroundStyle(.white)
-                Text(scanner.visible.contains(id) ? (language == "ru" ? "В кадре • без калибровки" : "Sichtbar • unkalibriert") : "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(.cyan)
+                Text(scanner.relativeTests[id] ?? "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.cyan : Color.gray)
+                Text(language == "ru" ? "Тест маркеров • не развал" : "Markertest • kein Sturz").font(.caption2).foregroundStyle(.orange)
             }
             Spacer(minLength: 0)
         }
@@ -229,6 +231,8 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     @Published var visible: Set<Int> = []
     @Published var candidateCount = 0
     @Published var boardImageMeasurements: [Int: String] = [:]
+    @Published var relativeTests: [Int: String] = [:]
+    @Published var liveRelativeTests: Set<Int> = []
     private let queue = DispatchQueue(label: "autoklinik.camera")
     private let voice = AVSpeechSynthesizer()
     private var target = 1
@@ -284,6 +288,9 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
                 }
                 self.session.addOutput(output)
                 output.setSampleBufferDelegate(self, queue: self.queue)
+                if let c = output.connection(with: .video), c.isCameraIntrinsicMatrixDeliverySupported {
+                    c.isCameraIntrinsicMatrixDeliveryEnabled = true
+                }
                 self.session.commitConfiguration()
                 self.configured = true
             }
@@ -300,6 +307,26 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
         lastFrameTime = now
         guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let observations = ArucoBridge.markerObservations(in: buffer)
+        var poses: [Int: simd_float4x4] = [:]
+        if let data = CMGetAttachment(sampleBuffer, key: kCMSampleBufferAttachmentKey_CameraIntrinsicMatrix, attachmentModeOut: nil) as? Data,
+           data.count >= MemoryLayout<simd_float3x3>.size {
+            var k = matrix_identity_float3x3
+            _ = withUnsafeMutableBytes(of: &k) { data.copyBytes(to: $0) }
+            for item in observations {
+                if let id = item["id"]?.intValue, let pose = Self.planarPose(item, k: k) {
+                    poses[id] = pose
+                }
+            }
+        }
+        var relative: [Int: String] = [:]
+        if let ref = poses.keys.filter({ (0..<32).contains($0) }).min(), let base = poses[ref] {
+            for id in poses.keys.sorted() where (32..<64).contains(id) {
+                guard let board = MarkerBoardConfiguration.boardNumber(forArUcoID: id), relative[board] == nil, let pose = poses[id] else { continue }
+                let p = simd_inverse(base) * pose
+                let t = p.columns.3
+                relative[board] = String(format: "ID %d→%d: %.1f / %.1f / %.1f мм", ref,id,t.x,t.y,t.z)
+            }
+        }
         let ids = observations.compactMap { $0["id"]?.intValue }
         var measurements: [Int: String] = [:]
         for item in observations {
@@ -315,12 +342,49 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
         let boards = Set(ids.compactMap { MarkerBoardConfiguration.boardNumber(forArUcoID: $0) })
         DispatchQueue.main.async {
             self.visible = boards
+            self.liveRelativeTests = Set(relative.keys)
+            for (board, value) in relative { self.relativeTests[board] = value }
             for (board, value) in measurements { self.boardImageMeasurements[board] = value }
             self.detected.formUnion(boards)
             self.candidateCount = ids.count
             self.status = self.localized("В кадре ArUco: \(ids.count), мишеней: \(boards.count); сохранено: \(self.detected.count)",
                                          "ArUco sichtbar: \(ids.count), Tafeln: \(boards.count); gespeichert: \(self.detected.count)")
         }
+    }
+    // Experimental single-square homography pose. Not calibrated wheel geometry.
+    private static func planarPose(_ item: [String: NSNumber], k: simd_float3x3) -> simd_float4x4? {
+        let half = Float(MarkerBoardConfiguration.markerSizeMillimeters / 2)
+        let xy = [SIMD2<Float>(-half,-half), SIMD2<Float>(half,-half), SIMD2<Float>(half,half), SIMD2<Float>(-half,half)]
+        guard abs(simd_determinant(k)) > 0.001 else { return nil }
+        let inv = simd_inverse(k)
+        var a = [[Float]]()
+        for i in 0..<4 {
+            guard let u = item["u\(i)"]?.floatValue, let v = item["v\(i)"]?.floatValue else { return nil }
+            let q = inv * SIMD3<Float>(u,v,1)
+            let x = xy[i].x, y = xy[i].y
+            a.append([x,y,1,0,0,0,-q.x*x,-q.x*y,q.x])
+            a.append([0,0,0,x,y,1,-q.y*x,-q.y*y,q.y])
+        }
+        for j in 0..<8 {
+            guard let pivot = (j..<8).max(by: { abs(a[$0][j]) < abs(a[$1][j]) }), abs(a[pivot][j]) > 0.00000001 else { return nil }
+            a.swapAt(j,pivot)
+            let d = a[j][j]
+            for c in j...8 { a[j][c] /= d }
+            for i in 0..<8 where i != j {
+                let f = a[i][j]
+                for c in j...8 { a[i][c] -= f*a[j][c] }
+            }
+        }
+        let h = a.map { $0[8] }
+        let c1 = SIMD3<Float>(h[0],h[3],h[6]), c2 = SIMD3<Float>(h[1],h[4],h[7])
+        let scale = 2 / (simd_length(c1)+simd_length(c2))
+        guard scale.isFinite, scale > 0 else { return nil }
+        let x = simd_normalize(c1)
+        let y0 = c2 - simd_dot(c2,x)*x
+        guard simd_length(y0) > 0.00000001 else { return nil }
+        let y = simd_normalize(y0), z = simd_cross(x,y)
+        let t = SIMD3<Float>(h[2],h[5],1)*scale
+        return simd_float4x4(columns: (SIMD4<Float>(x,0),SIMD4<Float>(y,0),SIMD4<Float>(z,0),SIMD4<Float>(t,1)))
     }
     private func speak(_ text: String) {
         voice.stopSpeaking(at: .immediate)
