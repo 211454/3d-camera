@@ -9,6 +9,7 @@ struct AUTOKLINIKCameraApp: App {
 final class ScannerModel: NSObject, ObservableObject, AVCaptureMetadataOutputObjectsDelegate {
     @Published var found: Set<String> = []
     @Published var permissionDenied = false
+    @Published var cameraStatus = "Запуск камеры…"
     @Published var liveAngles: [String: Double] = [:]
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "camera.session.queue")
@@ -17,22 +18,29 @@ final class ScannerModel: NSObject, ObservableObject, AVCaptureMetadataOutputObj
     func start() {
         AVCaptureDevice.requestAccess(for: .video) { granted in
             if !granted {
-                DispatchQueue.main.async { self.permissionDenied = true }
+                DispatchQueue.main.async { self.permissionDenied = true; self.cameraStatus = "Нет доступа к камере" }
                 return
             }
             self.queue.async {
                 if self.session.inputs.isEmpty {
                     guard let camera = AVCaptureDevice.default(for: .video),
                           let input = try? AVCaptureDeviceInput(device: camera),
-                          self.session.canAddInput(input) else { return }
+                          self.session.canAddInput(input) else {
+                        DispatchQueue.main.async { self.cameraStatus = "Не удалось подключить камеру" }
+                        return
+                    }
                     self.session.addInput(input)
                     let output = AVCaptureMetadataOutput()
-                    guard self.session.canAddOutput(output) else { return }
+                    guard self.session.canAddOutput(output) else {
+                        DispatchQueue.main.async { self.cameraStatus = "Не удалось настроить QR-сканер" }
+                        return
+                    }
                     self.session.addOutput(output)
                     output.metadataObjectTypes = [.qr]
                     output.setMetadataObjectsDelegate(self, queue: .main)
                 }
                 if !self.session.isRunning { self.session.startRunning() }
+                DispatchQueue.main.async { self.cameraStatus = self.session.isRunning ? "Камера запущена" : "Камера не запустилась" }
             }
         }
     }
@@ -88,12 +96,14 @@ struct ScannerView: View {
     private let markerLabels = ["Левая стойка · верх", "Левая стойка · низ", "Правая стойка · верх", "Правая стойка · низ", "Переднее левое", "Переднее правое", "Заднее левое", "Заднее правое"]
 
     var body: some View {
+        ScrollView {
         VStack(spacing: 12) {
             Text("AUTOKLINIK 3D CAMERA").font(.headline)
             Text("Шаг 1 — 2 стойки и 4 колеса")
             CameraPreview(session: model.session)
-                .frame(maxHeight: .infinity)
+                .frame(height: 260)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
+            Text(model.cameraStatus).font(.caption).foregroundStyle(.secondary)
             Text("Найдено: \(model.found.count) из 8").font(.title2).bold()
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4)) {
                 ForEach(1...8, id: \.self) { n in
@@ -131,6 +141,7 @@ struct ScannerView: View {
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding()
+        }
         .sheet(isPresented: $showCalibration) {
             CalibrationView()
         }
