@@ -1,0 +1,18 @@
+workflows:
+  ios-marker-test:
+    name: AUTOKLINIK 3D Camera marker test
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    scripts:
+      - name: Install XcodeGen
+        script: brew install xcodegen
+      - name: Generate Xcode project
+        script: xcodegen generate
+      - name: Build simulator test
+        script: |
+          xcodebuild -project AUTOKLINIKCamera.xcodeproj -scheme AUTOKLINIKCamera -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+    artifacts:
+      - "**/build/**/*.app"
+      - "/tmp/xcodebuild_logs/*.log"
