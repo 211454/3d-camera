@@ -13,6 +13,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.autoklinik.camera3dtest
+        FRAMEWORK_SEARCH_PATHS: ["$(inherited)", "$(PROJECT_DIR)"]
+        HEADER_SEARCH_PATHS: ["$(inherited)", "$(PROJECT_DIR)/opencv2.framework/Headers"]
         SWIFT_VERSION: 5.0
         SWIFT_OBJC_BRIDGING_HEADER: AUTOKLINIK-Bridging-Header.h
         CLANG_CXX_LANGUAGE_STANDARD: c++17
