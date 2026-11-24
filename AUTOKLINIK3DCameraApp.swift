@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import Vision
+import simd
 
 @main
 struct AutoKlinik3DCameraApp: App {
@@ -68,7 +69,7 @@ struct ContentView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Text(scanner.detected.isSuperset(of: Set(1...4)) ? (language == "ru" ? "4 опоры найдены. Геометрическая калибровка ещё не выполнена — измерения заблокированы." : "4 Referenzen erkannt. Geometrische Kalibrierung fehlt — Messung gesperrt.") : (language == "ru" ? "Сначала найдите четыре опорные мишени на стойках" : "Zuerst vier Referenztafeln erfassen"))
                             .font(.caption).foregroundStyle(.yellow)
-                        Text(language == "ru" ? "Тест камеры, не измерение развала-схождения" : "Kameratest, keine Achsvermessung")
+                        Text(language == "ru" ? "Тест относительного 3D-поворота: держите опору и колесо в одном кадре" : "3D-Relativdrehungstest: Referenz und Rad gleichzeitig im Bild")
                             .font(.caption2).foregroundStyle(.white.opacity(0.7))
                     }
                     .padding(14)
@@ -110,7 +111,7 @@ struct ContentView: View {
             markerTile(id)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.caption2).foregroundStyle(.white)
-                Text(scanner.boardImageMeasurements[id] ?? "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(.cyan)
+                Text(scanner.relativeAngleMeasurements[id] ?? "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(.cyan)
             }
             Spacer(minLength: 0)
         }
@@ -156,6 +157,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     @Published var visible: Set<Int> = []
     @Published var candidateCount = 0
     @Published var boardImageMeasurements: [Int: String] = [:]
+    @Published var relativeAngleMeasurements: [Int: String] = [:]
     private let queue = DispatchQueue(label: "autoklinik.camera")
     private let voice = AVSpeechSynthesizer()
     private var target = 1
@@ -210,6 +212,9 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
                     return
                 }
                 self.session.addOutput(output)
+                if let videoConnection = output.connection(with: .video), videoConnection.isCameraIntrinsicMatrixDeliverySupported {
+                    videoConnection.isCameraIntrinsicMatrixDeliveryEnabled = true
+                }
                 output.setSampleBufferDelegate(self, queue: self.queue)
                 self.session.commitConfiguration()
                 self.configured = true
@@ -239,9 +244,47 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
                 measurements[board] = String(format: "x%.0f y%.0f px | %.0f px | %+.1f°", x, y, edge, angle)
             }
         }
+
+        // No fake 3D result when the actual camera intrinsic matrix is unavailable.
+        var relative: [Int: String] = [:]
+        if let intrinsicData = CMGetAttachment(sampleBuffer, key: kCMSampleBufferAttachmentKey_CameraIntrinsicMatrix, attachmentModeOut: nil) as? Data,
+           intrinsicData.count == MemoryLayout<simd_float3x3>.size {
+            let K = intrinsicData.withUnsafeBytes { $0.loadUnaligned(as: simd_float3x3.self) }
+            let poses = ArucoBridge.markerPoses(in: buffer,
+                                                 fx: Double(K.columns.0.x), fy: Double(K.columns.1.y),
+                                                 cx: Double(K.columns.2.x), cy: Double(K.columns.2.y))
+            var matrices: [Int: simd_double3x3] = [:]
+            for item in poses {
+                guard let id = item["id"]?.intValue else { continue }
+                let keys = ["r00","r01","r02","r10","r11","r12","r20","r21","r22"]
+                let values = keys.compactMap { item[$0]?.doubleValue }
+                guard values.count == 9 else { continue }
+                matrices[id] = simd_double3x3(columns: (
+                    SIMD3(values[0], values[3], values[6]),
+                    SIMD3(values[1], values[4], values[7]),
+                    SIMD3(values[2], values[5], values[8])
+                ))
+            }
+            // Use a fixed reference ID when present; do not silently switch reference markers.
+            if let refID = (0..<32).first(where: { matrices[$0] != nil }), let ref = matrices[refID] {
+                for wheel in 5...8 {
+                    let firstID = (wheel - 1) * MarkerBoardConfiguration.markerIDsPerBoard
+                    if let wheelID = (firstID..<(firstID + 8)).first(where: { matrices[$0] != nil }),
+                       let wheelPose = matrices[wheelID] {
+                        let rotation = simd_transpose(ref) * wheelPose
+                        let trace = rotation.columns.0.x + rotation.columns.1.y + rotation.columns.2.z
+                        let cosine = max(-1.0, min(1.0, (trace - 1.0) / 2.0))
+                        let degrees = acos(cosine) * 180.0 / .pi
+                        relative[wheel] = String(format: "%.1f° (ID %d/%d)", degrees, refID, wheelID)
+                    }
+                }
+            }
+        }
+
         let boards = Set(ids.compactMap { MarkerBoardConfiguration.boardNumber(forArUcoID: $0) })
         DispatchQueue.main.async {
             self.visible = boards
+            self.relativeAngleMeasurements = relative
             for (board, value) in measurements { self.boardImageMeasurements[board] = value }
             self.detected.formUnion(boards)
             self.candidateCount = ids.count
