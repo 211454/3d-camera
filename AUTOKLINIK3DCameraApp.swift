@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import Vision
+import SceneKit
 
 @main
 struct AutoKlinik3DCameraApp: App {
@@ -44,6 +45,11 @@ struct ContentView: View {
                                     .padding(8)
                             }
 
+                        LiftOverview(detected: scanner.detected, visible: scanner.visible)
+                            .frame(height: 280)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        Text(language == "ru" ? "Схема подъёмника • не масштабная" : "Hebebühne • schematisch")
+                            .font(.caption2).foregroundStyle(.white.opacity(0.7))
                         Text(language == "ru" ? "ДВЕ СТОЙКИ · 4 ОПОРНЫЕ МИШЕНИ" : "ZWEI SÄULEN · 4 REFERENZMARKEN")
                             .font(.caption.bold()).foregroundStyle(.white)
                         HStack(spacing: 10) {
@@ -110,7 +116,7 @@ struct ContentView: View {
             markerTile(id)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.caption2).foregroundStyle(.white)
-                Text(scanner.boardImageMeasurements[id] ?? "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(.cyan)
+                Text(scanner.visible.contains(id) ? (language == "ru" ? "В кадре • без калибровки" : "Sichtbar • unkalibriert") : "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(.cyan)
             }
             Spacer(minLength: 0)
         }
@@ -127,6 +133,73 @@ struct ContentView: View {
             .background(scanner.detected.contains(id) ? Color.green : Color.gray.opacity(0.55))
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+struct LiftOverview: UIViewRepresentable {
+    let detected: Set<Int>
+    let visible: Set<Int>
+    func makeUIView(context: Context) -> SCNView {
+        let view = SCNView()
+        view.backgroundColor = UIColor(red: 0.04, green: 0.07, blue: 0.12, alpha: 1)
+        view.autoenablesDefaultLighting = true
+        view.allowsCameraControl = true
+        view.antialiasingMode = .multisampling4X
+        let scene = SCNScene()
+        view.scene = scene
+        func box(_ w: CGFloat, _ h: CGFloat, _ l: CGFloat, _ x: Float, _ y: Float, _ z: Float, _ color: UIColor) {
+            let g = SCNBox(width: w, height: h, length: l, chamferRadius: 0.04)
+            g.firstMaterial?.diffuse.contents = color
+            let n = SCNNode(geometry: g)
+            n.position = SCNVector3(x,y,z)
+            scene.rootNode.addChildNode(n)
+        }
+        box(5,0.12,6,0,-0.1,0,.darkGray)
+        for x: Float in [-2,2] {
+            box(0.35,2.8,0.4,x,1.4,0,.systemBlue)
+            box(1.3,0.14,0.24,x * 0.68,0.18,1,.systemYellow)
+            box(1.3,0.14,0.24,x * 0.68,0.18,-1,.systemYellow)
+        }
+        box(1.7,0.65,3.8,0,0.65,0,.lightGray)
+        box(1.45,0.55,1.9,0,1.2,-0.15,.darkGray)
+        for x: Float in [-0.9,0.9] {
+            for z: Float in [-1.25,1.25] {
+                let wheel = SCNCylinder(radius: 0.36, height: 0.26)
+                wheel.firstMaterial?.diffuse.contents = UIColor.black
+                let n = SCNNode(geometry: wheel)
+                n.eulerAngles.z = Float.pi / 2
+                n.position = SCNVector3(x,0.38,z)
+                scene.rootNode.addChildNode(n)
+            }
+        }
+        let points: [(Float,Float,Float)] = [(-2,2.4,0.23),(-2,0.9,0.23),(2,2.4,0.23),(2,0.9,0.23),(-1.1,0.42,1.25),(1.1,0.42,1.25),(-1.1,0.42,-1.25),(1.1,0.42,-1.25)]
+        for (i,p) in points.enumerated() {
+            let g = SCNSphere(radius: 0.15)
+            let n = SCNNode(geometry: g)
+            n.name = "marker-\(i+1)"
+            n.position = SCNVector3(p.0,p.1,p.2)
+            scene.rootNode.addChildNode(n)
+            let label = SCNText(string: String(i+1), extrusionDepth: 0)
+            label.font = UIFont.boldSystemFont(ofSize: 12)
+            label.firstMaterial?.diffuse.contents = UIColor.white
+            let t = SCNNode(geometry: label)
+            t.scale = SCNVector3(0.025,0.025,0.025)
+            t.position = SCNVector3(p.0,p.1+0.2,p.2)
+            t.constraints = [SCNBillboardConstraint()]
+            scene.rootNode.addChildNode(t)
+        }
+        let camera = SCNNode()
+        camera.camera = SCNCamera()
+        camera.position = SCNVector3(5,5,7)
+        camera.look(at: SCNVector3(0,0.7,0))
+        scene.rootNode.addChildNode(camera)
+        view.pointOfView = camera
+        return view
+    }
+    func updateUIView(_ view: SCNView, context: Context) {
+        for id in 1...8 {
+            view.scene?.rootNode.childNode(withName: "marker-\(id)", recursively: true)?.geometry?.firstMaterial?.diffuse.contents = visible.contains(id) ? UIColor.systemGreen : (detected.contains(id) ? UIColor.systemOrange : UIColor.systemGray)
+        }
     }
 }
 
