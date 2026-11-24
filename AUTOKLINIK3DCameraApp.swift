@@ -196,6 +196,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
                 self.session.addInput(input)
                 let output = AVCaptureVideoDataOutput()
                 output.alwaysDiscardsLateVideoFrames = true
+                output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
                 guard self.session.canAddOutput(output) else {
                     self.session.commitConfiguration()
                     DispatchQueue.main.async { self.status = "Сканер недоступен" }
