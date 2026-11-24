@@ -62,7 +62,7 @@ struct ContentView: View {
                                 wheelCard(8, title: language == "ru" ? "Заднее правое" : "Hinten rechts")
                             }
                         }
-                        Text(language == "ru" ? "Квадратных контуров: \(scanner.candidateCount). ID ChArUco пока не распознаются." : "Quadratische Konturen: \(scanner.candidateCount). ChArUco-IDs noch nicht erkannt.")
+                        Text(language == "ru" ? "Найдено мишеней: \(scanner.detected.count)" : "Erkannte Tafeln: \(scanner.detected.count)")
                             .font(.caption).foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
                         Text(language == "ru" ? "Тест камеры, не измерение развала-схождения" : "Kameratest, keine Achsvermessung")
@@ -214,29 +214,17 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
         }
     }
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        // Preliminary visual candidate detection. This does NOT decode ArUco IDs.
         let now = CACurrentMediaTime()
-        guard now - lastFrameTime >= 0.4 else { return }
+        guard now - lastFrameTime >= 0.25 else { return }
         lastFrameTime = now
         guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let request = VNDetectRectanglesRequest()
-        request.maximumObservations = 12
-        request.minimumConfidence = 0.65
-        request.minimumAspectRatio = 0.75
-        request.maximumAspectRatio = 1.0
-        request.minimumSize = 0.035
-        do {
-            try VNImageRequestHandler(cvPixelBuffer: buffer, options: [:]).perform([request])
-            let count = request.results?.count ?? 0
-            DispatchQueue.main.async {
-                self.candidateCount = count
-                self.status = self.localized("Квадратных контуров: \(count). ID пока не определены",
-                                             "Quadratische Konturen: \(count). IDs noch unbekannt")
-            }
-        } catch {
-            DispatchQueue.main.async {
-                self.status = self.localized("Ошибка анализа кадра", "Bildanalyse fehlgeschlagen")
-            }
+        let ids = ArucoBridge.markerIDs(in: buffer).map { $0.intValue }
+        let boards = Set(ids.compactMap { MarkerBoardConfiguration.boardNumber(forArUcoID: $0) })
+        DispatchQueue.main.async {
+            self.detected = boards
+            self.candidateCount = ids.count
+            self.status = self.localized("Найдено ArUco: \(ids.count), мишеней: \(boards.count)",
+                                         "ArUco erkannt: \(ids.count), Tafeln: \(boards.count)")
         }
     }
     private func speak(_ text: String) {
