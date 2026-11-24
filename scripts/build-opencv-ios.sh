@@ -21,5 +21,5 @@ HEADERS="$REPO_ROOT/opencv2.framework/Headers"
 for header in core.hpp imgproc.hpp objdetect/aruco_detector.hpp objdetect/aruco_dictionary.hpp; do
   test -f "$HEADERS/$header" || { echo "ERROR: Missing OpenCV header: $HEADERS/$header"; exit 1; }
 done
-lipo -verify_arch arm64 "$REPO_ROOT/opencv2.framework/opencv2"
+xcrun lipo "$REPO_ROOT/opencv2.framework/opencv2" -verify_arch arm64
 echo "OpenCV framework headers and arm64 verified"
