@@ -9,6 +9,7 @@ struct AUTOKLINIKCameraApp: App {
 final class ScannerModel: NSObject, ObservableObject, AVCaptureMetadataOutputObjectsDelegate {
     @Published var found: Set<String> = []
     @Published var permissionDenied = false
+    @Published var liveAngles: [String: Double] = [:]
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "camera.session.queue")
     private let ids = Set((1...8).map { "AUTOKLINIK-3D-\($0)" })
@@ -39,16 +40,28 @@ final class ScannerModel: NSObject, ObservableObject, AVCaptureMetadataOutputObj
     func stop() {
         queue.async { if self.session.isRunning { self.session.stopRunning() } }
     }
-    func reset() { found.removeAll() }
+    func reset() { found.removeAll(); liveAngles.removeAll() }
 
     func metadataOutput(_ output: AVCaptureMetadataOutput,
                         didOutput metadataObjects: [AVMetadataObject],
                         from connection: AVCaptureConnection) {
+        var angles: [String: Double] = [:]
         for item in metadataObjects {
             guard let qr = item as? AVMetadataMachineReadableCodeObject,
                   let value = qr.stringValue, ids.contains(value) else { continue }
             found.insert(value)
+            let corners = qr.corners
+            if corners.count >= 2 {
+                let first = corners[0]
+                let second = corners[1]
+                let dx = Double(second.x - first.x)
+                let dy = Double(second.y - first.y)
+                if hypot(dx, dy) > 0.0001 {
+                    angles[value] = atan2(dy, dx) * 180.0 / .pi
+                }
+            }
         }
+        liveAngles = angles
     }
 }
 
@@ -71,6 +84,7 @@ struct ScannerView: View {
     @StateObject private var model = ScannerModel()
     @State private var showCalibration = false
     @State private var showWorkflow = false
+    @State private var showAngleTest = false
     private let markerLabels = ["Левая стойка · верх", "Левая стойка · низ", "Правая стойка · верх", "Правая стойка · низ", "Переднее левое", "Переднее правое", "Заднее левое", "Заднее правое"]
 
     var body: some View {
@@ -93,6 +107,8 @@ struct ScannerView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
+            Button("Тест углов QR") { showAngleTest = true }
+                .buttonStyle(.bordered)
             Button("Пошаговая проверка автомобиля") { showWorkflow = true }
                 .buttonStyle(.borderedProminent)
             if model.found.count == 8 {
@@ -117,6 +133,9 @@ struct ScannerView: View {
         .padding()
         .sheet(isPresented: $showCalibration) {
             CalibrationView()
+        }
+        .sheet(isPresented: $showAngleTest) {
+            QRAngleTestView(model: model)
         }
         .sheet(isPresented: $showWorkflow) {
             GuidedMeasurementView(model: model)
@@ -250,6 +269,61 @@ struct GuidedMeasurementView: View {
                 }
             }
             .navigationTitle("Проверка автомобиля")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+ 
+// Experimental 2D orientation only; NOT a 3D inclination or wheel alignment.
+struct QRAngleTestView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var model: ScannerModel
+
+    private var referenceAngle: Double? {
+        for number in 1...4 {
+            if let angle = model.liveAngles["AUTOKLINIK-3D-\(number)"] {
+                return angle
+            }
+        }
+        return nil
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                Text("Покажите в одном кадре опорный QR 1–4 и проверяемый QR 5–8.")
+                    .font(.caption)
+                CameraPreview(session: model.session)
+                    .frame(maxHeight: 280)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                List {
+                    ForEach(5...8, id: \.self) { number in
+                        HStack {
+                            Text("Маркер \(number)")
+                            Spacer()
+                            if let base = referenceAngle,
+                               let current = model.liveAngles["AUTOKLINIK-3D-\(number)"] {
+                                let delta = current - base
+                                let wrapped = (delta + 540).truncatingRemainder(dividingBy: 360) - 180
+                                Text(String(format: "%.1f°", wrapped))
+                                    .monospacedDigit()
+                            } else {
+                                Text("Нет пары в кадре").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                Text("Только разница направлений QR на 2D-изображении. Перспектива и движение камеры влияют на результат. Это НЕ 3D-наклон, развал или схождение.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            .navigationTitle("Тест углов QR")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Закрыть") { dismiss() }
