@@ -62,7 +62,7 @@ struct ContentView: View {
                                 wheelCard(8, title: language == "ru" ? "Заднее правое" : "Hinten rechts")
                             }
                         }
-                        Text(language == "ru" ? "Квадратных контуров: \\(scanner.candidateCount). ID ChArUco пока не распознаются." : "Quadratische Konturen: \\(scanner.candidateCount). ChArUco-IDs noch nicht erkannt.")
+                        Text(language == "ru" ? "Квадратных контуров: \(scanner.candidateCount). ID ChArUco пока не распознаются." : "Quadratische Konturen: \(scanner.candidateCount). ChArUco-IDs noch nicht erkannt.")
                             .font(.caption).foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
                         Text(language == "ru" ? "Тест камеры, не измерение развала-схождения" : "Kameratest, keine Achsvermessung")
@@ -116,7 +116,7 @@ struct ContentView: View {
     }
 
     private func markerTile(_ id: Int) -> some View {
-        Text("\\(id)")
+        Text("\(id)")
             .font(.subheadline.bold())
             .frame(width: 32, height: 32)
             .background(scanner.detected.contains(id) ? Color.green : Color.gray.opacity(0.55))
@@ -230,8 +230,8 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
             let count = request.results?.count ?? 0
             DispatchQueue.main.async {
                 self.candidateCount = count
-                self.status = self.localized("Квадратных контуров: \\(count). ID пока не определены",
-                                             "Quadratische Konturen: \\(count). IDs noch unbekannt")
+                self.status = self.localized("Квадратных контуров: \(count). ID пока не определены",
+                                             "Quadratische Konturen: \(count). IDs noch unbekannt")
             }
         } catch {
             DispatchQueue.main.async {
