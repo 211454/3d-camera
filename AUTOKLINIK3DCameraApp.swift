@@ -108,8 +108,10 @@ struct ContentView: View {
     private func wheelCard(_ id: Int, title: String) -> some View {
         HStack(spacing: 6) {
             markerTile(id)
-            Text(title).font(.caption2).foregroundStyle(.white)
-                .lineLimit(2).minimumScaleFactor(0.8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.caption2).foregroundStyle(.white)
+                Text(scanner.boardImageMeasurements[id] ?? "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(.cyan)
+            }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
@@ -153,6 +155,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     @Published var detected: Set<Int> = []
     @Published var visible: Set<Int> = []
     @Published var candidateCount = 0
+    @Published var boardImageMeasurements: [Int: String] = [:]
     private let queue = DispatchQueue(label: "autoklinik.camera")
     private let voice = AVSpeechSynthesizer()
     private var target = 1
@@ -223,10 +226,23 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
         guard now - lastFrameTime >= 0.25 else { return }
         lastFrameTime = now
         guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        let ids = ArucoBridge.markerIDs(in: buffer).map { $0.intValue }
+        let observations = ArucoBridge.markerObservations(in: buffer)
+        let ids = observations.compactMap { $0["id"]?.intValue }
+        var measurements: [Int: String] = [:]
+        for item in observations {
+            guard let markerID = item["id"]?.intValue,
+                  let board = MarkerBoardConfiguration.boardNumber(forArUcoID: markerID),
+                  let x = item["x"]?.doubleValue, let y = item["y"]?.doubleValue,
+                  let edge = item["edgePixels"]?.doubleValue,
+                  let angle = item["angleDegrees"]?.doubleValue else { continue }
+            if measurements[board] == nil {
+                measurements[board] = String(format: "x%.0f y%.0f px | %.0f px | %+.1f°", x, y, edge, angle)
+            }
+        }
         let boards = Set(ids.compactMap { MarkerBoardConfiguration.boardNumber(forArUcoID: $0) })
         DispatchQueue.main.async {
             self.visible = boards
+            for (board, value) in measurements { self.boardImageMeasurements[board] = value }
             self.detected.formUnion(boards)
             self.candidateCount = ids.count
             self.status = self.localized("В кадре ArUco: \(ids.count), мишеней: \(boards.count); сохранено: \(self.detected.count)",
