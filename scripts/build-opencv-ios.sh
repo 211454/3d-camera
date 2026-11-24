@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # OpenCV objdetect includes ArUco in 4.10; contrib is included for ChArUco support.
+REPO_ROOT="$PWD"
 OPENCV_VERSION=4.10.0
 mkdir -p "$CM_BUILD_DIR/opencv-src"
 cd "$CM_BUILD_DIR/opencv-src"
@@ -14,5 +15,5 @@ python3 opencv/platforms/ios/build_framework.py "$CM_BUILD_DIR/opencv-output" \
   --build_only_specified_archs
 FOUND=$(find "$CM_BUILD_DIR/opencv-output" -name '*.xcframework' -type d -print -quit)
 test -n "$FOUND"
-cp -R "$FOUND" "$CM_BUILD_DIR/../OpenCV.xcframework"
+cp -R "$FOUND" "$REPO_ROOT/OpenCV.xcframework"
 # Codemagic normally checks out repository under CM_BUILD_DIR.
