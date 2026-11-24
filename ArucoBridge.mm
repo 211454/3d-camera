@@ -56,7 +56,11 @@
             float length = cv::norm(edge);
             float angle = std::atan2(edge.y, edge.x) * 180.0f / (float)CV_PI;
             [result addObject:@{@"id": @(ids[i]), @"x": @(center.x), @"y": @(center.y),
-                                @"edgePixels": @(length), @"angleDegrees": @(angle)}];
+                                @"edgePixels": @(length), @"angleDegrees": @(angle),
+                                @"u0": @(corners[i][0].x), @"v0": @(corners[i][0].y),
+                                @"u1": @(corners[i][1].x), @"v1": @(corners[i][1].y),
+                                @"u2": @(corners[i][2].x), @"v2": @(corners[i][2].y),
+                                @"u3": @(corners[i][3].x), @"v3": @(corners[i][3].y)}];
         }
     }
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
