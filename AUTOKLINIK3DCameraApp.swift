@@ -45,7 +45,12 @@ struct ContentView: View {
                                     .padding(8)
                             }
 
-                        Text(language == "ru" ? "ДВЕ СТОЙКИ · 4 ОПОРНЫЕ МИШЕНИ" : "ZWEI SÄULEN · 4 REFERENZMARKEN")
+                        LiftOverview(visible: scanner.visible,
+                                     detected: scanner.detected,
+                                     angles: scanner.relativeAngleMeasurements,
+                                     language: language)
+                            .frame(height: 340)
+                                                Text(language == "ru" ? "ДВЕ СТОЙКИ · 4 ОПОРНЫЕ МИШЕНИ" : "ZWEI SÄULEN · 4 REFERENZMARKEN")
                             .font(.caption.bold()).foregroundStyle(.white)
                         HStack(spacing: 10) {
                             postCard(title: language == "ru" ? "Стойка 1" : "Säule 1", ids: [1, 2])
@@ -128,6 +133,85 @@ struct ContentView: View {
             .background(scanner.detected.contains(id) ? Color.green : Color.gray.opacity(0.55))
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+
+struct LiftOverview: View {
+    let visible: Set<Int>
+    let detected: Set<Int>
+    let angles: [Int: String]
+    let language: String
+
+    private func markerColor(_ id: Int) -> Color {
+        visible.contains(id) ? .green : (detected.contains(id) ? .orange : .gray)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            ZStack {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color(red: 0.08, green: 0.14, blue: 0.21))
+                // Vector lift diagram, not a photograph or a measured 3D reconstruction.
+                ForEach([0.30, 0.70], id: \.self) { fraction in
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color(red: 0.28, green: 0.37, blue: 0.46))
+                        .frame(width: w * 0.15, height: h * 0.77)
+                        .position(x: w * fraction, y: h * 0.53)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.cyan.opacity(0.35))
+                        .frame(width: w * 0.035, height: h * 0.72)
+                        .position(x: w * fraction, y: h * 0.53)
+                }
+                // Vehicle silhouette, top view.
+                RoundedRectangle(cornerRadius: 40)
+                    .fill(Color(red: 0.18, green: 0.27, blue: 0.35))
+                    .overlay(RoundedRectangle(cornerRadius: 40).stroke(Color.cyan.opacity(0.8), lineWidth: 2))
+                    .frame(width: w * 0.39, height: h * 0.66)
+                    .position(x: w * 0.5, y: h * 0.53)
+                RoundedRectangle(cornerRadius: 13)
+                    .fill(Color(red: 0.10, green: 0.18, blue: 0.25))
+                    .frame(width: w * 0.31, height: h * 0.18)
+                    .position(x: w * 0.5, y: h * 0.39)
+                Text(language == "ru" ? "ПЕРЕД ↑" : "VORNE ↑")
+                    .font(.caption2.bold()).foregroundStyle(.cyan)
+                    .position(x: w * 0.5, y: h * 0.09)
+                // Fixed reference targets on the two lift posts.
+                ForEach(1...4, id: \.self) { id in
+                    let x = id <= 2 ? 0.13 : 0.87
+                    let y = (id == 1 || id == 3) ? 0.33 : 0.74
+                    VStack(spacing: 1) {
+                        Circle().fill(markerColor(id)).frame(width: 13, height: 13)
+                            .overlay(Circle().stroke(.white, lineWidth: 1))
+                        Text("S\(id)").font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .position(x: w * x, y: h * y)
+                }
+                ForEach(5...8, id: \.self) { id in
+                    let x = (id == 5 || id == 7) ? 0.275 : 0.725
+                    let y = id <= 6 ? 0.34 : 0.72
+                    VStack(spacing: 2) {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.black)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(markerColor(id), lineWidth: 3))
+                            .frame(width: w * 0.13, height: h * 0.15)
+                            .overlay {
+                                Circle().stroke(Color.gray, lineWidth: 3)
+                                    .frame(width: 22, height: 22)
+                            }
+                        Text("W\(id)  " + (angles[id]?.components(separatedBy: " (").first ?? "—"))
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .fixedSize()
+                    }
+                    .position(x: w * x, y: h * y)
+                }
+            }
+        }
+        .accessibilityLabel(language == "ru" ? "Схема подъёмника, две стойки, четыре колеса и восемь маркеров" : "Lift diagram with two posts, four wheels and eight markers")
     }
 }
 
