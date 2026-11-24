@@ -155,21 +155,81 @@ struct LiftOverview: UIViewRepresentable {
             box(1.3,0.14,0.24,x * 0.68,0.18,1,.systemYellow)
             box(1.3,0.14,0.24,x * 0.68,0.18,-1,.systemYellow)
         }
-        box(1.7,0.48,3.8,0,0.65,0,.lightGray)
-        box(1.42,0.38,1.85,0,1.03,-0.12,UIColor(red: 0.12, green: 0.24, blue: 0.34, alpha: 1))
-        box(1.35,0.12,1.72,0,1.26,-0.12,.lightGray)
-        for x in [Float(-0.57),Float(0.57)] {
-            box(0.35,0.12,0.06,x,0.72,1.91,.white)
-            box(0.35,0.12,0.06,x,0.72,-1.91,.systemRed)
+        // Sculpted loft surfaces rather than stacked rectangular body blocks.
+        let paint = UIColor(red: 0.67, green: 0.72, blue: 0.78, alpha: 1)
+        let glass = UIColor(red: 0.065, green: 0.12, blue: 0.17, alpha: 1)
+        func material(_ color: UIColor, metal: CGFloat = 0, rough: CGFloat = 0.35) -> SCNMaterial {
+            let m = SCNMaterial()
+            m.lightingModel = .physicallyBased
+            m.diffuse.contents = color
+            m.metalness.contents = NSNumber(value: Double(metal))
+            m.roughness.contents = NSNumber(value: Double(rough))
+            m.isDoubleSided = true
+            return m
         }
-        for x in [Float(-0.9),Float(0.9)] {
+        func loft(_ rings: [[SCNVector3]], _ m: SCNMaterial) {
+            guard let first = rings.first, first.count >= 3 else { return }
+            let n = first.count
+            let vertices = rings.flatMap { $0 }
+            var indices: [Int32] = []
+            for r in 0..<(rings.count - 1) {
+                for j in 0..<n {
+                    let k = (j + 1) % n
+                    let a = Int32(r*n+j), b = Int32(r*n+k)
+                    let c = Int32((r+1)*n+j), d = Int32((r+1)*n+k)
+                    indices.append(contentsOf: [a,b,c,b,d,c])
+                }
+            }
+            for j in 1..<(n-1) {
+                indices.append(contentsOf: [0,Int32(j+1),Int32(j)])
+                let q = Int32((rings.count-1)*n)
+                indices.append(contentsOf: [q,q+Int32(j),q+Int32(j+1)])
+            }
+            let data = indices.withUnsafeBufferPointer { Data(buffer: $0) }
+            let element = SCNGeometryElement(data: data, primitiveType: .triangles, primitiveCount: indices.count/3, bytesPerIndex: 4)
+            let g = SCNGeometry(sources: [SCNGeometrySource(vertices: vertices)], elements: [element])
+            g.materials = [m]
+            scene.rootNode.addChildNode(SCNNode(geometry: g))
+        }
+        func section(_ z: Float, _ w: Float, _ low: Float, _ top: Float) -> [SCNVector3] {
+            let h = top-low
+            return [SCNVector3(-w*0.82,low,z),SCNVector3(-w,low+h*0.27,z),SCNVector3(-w*0.99,top-h*0.22,z),SCNVector3(-w*0.79,top,z),SCNVector3(w*0.79,top,z),SCNVector3(w*0.99,top-h*0.22,z),SCNVector3(w,low+h*0.27,z),SCNVector3(w*0.82,low,z)]
+        }
+        loft([section(-2.13,0.73,0.49,0.79),section(-1.94,0.88,0.36,0.90),section(-1.35,0.91,0.37,0.94),section(-0.65,0.91,0.39,0.92),section(0.55,0.91,0.39,0.91),section(1.31,0.91,0.36,0.86),section(1.85,0.86,0.36,0.76),section(2.08,0.75,0.46,0.67)], material(paint, metal: 0.38))
+        func cabin(_ z: Float, _ base: Float, _ roof: Float, _ y: Float) -> [SCNVector3] {
+            [SCNVector3(-base,0.89,z),SCNVector3(-roof,y,z),SCNVector3(roof,y,z),SCNVector3(base,0.89,z)]
+        }
+        loft([cabin(-1.37,0.76,0.68,0.94),cabin(-0.64,0.78,0.59,1.36),cabin(0.25,0.78,0.59,1.39),cabin(1.03,0.76,0.69,0.94)],material(glass, metal: 0.12, rough: 0.14))
+        loft([section(-0.66,0.59,1.34,1.39),section(-0.42,0.61,1.36,1.43),section(0.22,0.61,1.37,1.43),section(0.38,0.59,1.34,1.39)],material(paint, metal: 0.38))
+        func part(_ g: SCNGeometry, _ m: SCNMaterial, _ x: Float, _ y: Float, _ z: Float) -> SCNNode {
+            g.materials = [m]
+            let node = SCNNode(geometry: g)
+            node.position = SCNVector3(x,y,z)
+            scene.rootNode.addChildNode(node)
+            return node
+        }
+        for x in [Float(-0.60),Float(0.60)] {
+            let lamp = SCNBox(width: 0.47,height: 0.105,length: 0.10,chamferRadius: 0.045)
+            _ = part(lamp,material(UIColor(red: 0.82,green: 0.94,blue: 1,alpha: 1)),x,0.70,1.94)
+            _ = part(SCNBox(width: 0.46,height: 0.11,length: 0.10,chamferRadius: 0.035),material(.systemRed),x,0.78,-2.01)
+        }
+        _ = part(SCNBox(width: 0.67,height: 0.16,length: 0.055,chamferRadius: 0.025),material(.black),0,0.59,2.06)
+        for x in [Float(-0.91),Float(0.91)] {
+            let sign: Float = x < 0 ? -1 : 1
+            _ = part(SCNSphere(radius: 0.12),material(paint,metal: 0.3),x*1.05,1.04,0.67)
             for z in [Float(-1.25),Float(1.25)] {
-                let wheel = SCNCylinder(radius: 0.36, height: 0.26)
-                wheel.firstMaterial?.diffuse.contents = UIColor.black
-                let n = SCNNode(geometry: wheel)
-                n.eulerAngles.z = Float.pi / 2
-                n.position = SCNVector3(x,0.38,z)
-                scene.rootNode.addChildNode(n)
+                let tire = part(SCNTorus(ringRadius: 0.275,pipeRadius: 0.085),material(.black,rough: 0.85),x,0.40,z)
+                tire.eulerAngles.z = .pi/2
+                let rim = part(SCNCylinder(radius: 0.225,height: 0.16),material(.darkGray,metal: 0.45),x,0.40,z)
+                rim.eulerAngles.z = .pi/2
+                let faceX = x + sign*0.095
+                let hub = part(SCNCylinder(radius: 0.065,height: 0.035),material(.lightGray,metal: 0.55),faceX,0.40,z)
+                hub.eulerAngles.z = .pi/2
+                for j in 0..<10 {
+                    let angle = Float(j)*2*Float.pi/10
+                    let spoke = part(SCNBox(width: 0.023,height: 0.17,length: 0.033,chamferRadius: 0.005),material(.lightGray,metal: 0.6),faceX,0.40+cos(angle)*0.135,z+sin(angle)*0.135)
+                    spoke.eulerAngles.x = angle
+                }
             }
         }
         let points: [(Float,Float,Float)] = [(-2.20,0.9,0),(-2.20,1.8,0),(2.20,0.9,0),(2.20,1.8,0),(-1.1,0.42,1.25),(1.1,0.42,1.25),(-1.1,0.42,-1.25),(1.1,0.42,-1.25)]
@@ -191,7 +251,7 @@ struct LiftOverview: UIViewRepresentable {
         }
         let camera = SCNNode()
         camera.camera = SCNCamera()
-        camera.position = SCNVector3(5,5,7)
+        camera.position = SCNVector3(6.0,4.3,6.8)
         camera.look(at: SCNVector3(0,0.7,0))
         scene.rootNode.addChildNode(camera)
         view.pointOfView = camera
