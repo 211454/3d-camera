@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var language = "ru"
     @State private var selectedWheel = 5
     @State private var adjustment = false
+    @State private var cameraFull = false
+    @State private var calibrationMode = true
     @State private var before: [Int: String] = [:]
     private let navy = Color(red: 0.04, green: 0.07, blue: 0.12)
     private let panel = Color(red: 0.08, green: 0.13, blue: 0.20)
@@ -23,6 +25,7 @@ struct ContentView: View {
     private var names: [String] { [tr("Переднее левое","Vorne links"),tr("Переднее правое","Vorne rechts"),tr("Заднее левое","Hinten links"),tr("Заднее правое","Hinten rechts")] }
 
     var body: some View {
+        GeometryReader { geometry in
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
@@ -36,9 +39,9 @@ struct ContentView: View {
                 } label: { Image(systemName: "globe").font(.title2).foregroundStyle(.white) }
             }.padding(14)
             HStack(spacing: 4) {
-                step("1",tr("Калибровка","Kalibrierung"),!scanner.spatialReady)
-                step("2",tr("Измерения","Messung"),scanner.spatialReady && !adjustment)
-                step("3",tr("Настройка","Einstellung"),scanner.spatialReady && adjustment)
+                Button { calibrationMode = true; adjustment = false; cameraFull = true; scanner.start() } label: { step("1",tr("Калибровка","Kalibrierung"),calibrationMode) }.buttonStyle(.plain)
+                Button { calibrationMode = false; adjustment = false; cameraFull = false } label: { step("2",tr("Измерения","Messung"),!calibrationMode && !adjustment) }.buttonStyle(.plain).disabled(!scanner.spatialReady)
+                Button { calibrationMode = false; before = scanner.relativeTests; adjustment = true; cameraFull = false } label: { step("3",tr("Настройка","Einstellung"),adjustment) }.buttonStyle(.plain).disabled(!scanner.spatialReady)
             }.padding(.horizontal,10)
             ScrollView {
                 VStack(spacing: 10) {
@@ -50,7 +53,7 @@ struct ContentView: View {
                     }.font(.caption.bold())
                     ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.green)
                     ZStack(alignment: .topLeading) {
-                        LiftOverview(detected: scanner.detected, visible: scanner.visible).frame(height: 300)
+                        LiftOverview(detected: scanner.detected, visible: scanner.visible).frame(height: max(300, geometry.size.height * 0.48)).frame(maxWidth: .infinity)
                         Text(tr("3D • СХЕМА","3D • SCHEMA")).font(.caption2.bold()).foregroundStyle(.cyan).padding(10)
                         VStack {
                             Spacer()
@@ -61,8 +64,8 @@ struct ContentView: View {
                             }.font(.caption2).padding(10)
                         }
                     }.background(panel).clipShape(RoundedRectangle(cornerRadius: 14))
-                    HStack {
-                        CameraPreview(session: scanner.session).frame(width: 142,height: 106).clipShape(RoundedRectangle(cornerRadius: 9))
+                    VStack(alignment: .leading, spacing: 8) {
+                        CameraPreview(session: scanner.session).frame(maxWidth: .infinity).frame(height: max(240, geometry.size.height * 0.40)).clipShape(RoundedRectangle(cornerRadius: 9))
                         VStack(alignment: .leading, spacing: 7) {
                             Label(tr("КАМЕРА LIVE","KAMERA LIVE"),systemImage: "video.fill").foregroundStyle(.cyan).font(.caption.bold())
                             Text(scanner.status).font(.caption).foregroundStyle(.white)
@@ -95,7 +98,7 @@ struct ContentView: View {
                 }.padding(12)
             }
             HStack(spacing: 8) {
-                Button { scanner.start() } label: {
+                Button { scanner.start(); cameraFull = true } label: {
                     Label(tr("Камера","Kamera"),systemImage: "camera").frame(maxWidth: .infinity)
                 }.buttonStyle(.bordered).tint(.cyan)
                 Button {
@@ -105,7 +108,19 @@ struct ContentView: View {
                     Label(adjustment ? tr("Измерения","Messung") : tr("Режим настройки","Einstellung"),systemImage: "slider.horizontal.3").frame(maxWidth: .infinity)
                 }.buttonStyle(.borderedProminent).tint(.cyan).disabled(!scanner.spatialReady)
             }.font(.caption.bold()).padding(12).background(panel)
+        }.frame(width: geometry.size.width, height: geometry.size.height)
         }.background(navy.ignoresSafeArea()).preferredColorScheme(.dark)
+        .onChange(of: scanner.spatialReady) { ready in if ready { calibrationMode = false; cameraFull = false } }
+        .fullScreenCover(isPresented: $cameraFull) {
+            ZStack(alignment: .top) {
+                CameraPreview(session: scanner.session).ignoresSafeArea()
+                VStack(spacing: 12) {
+                    HStack { Text(scanner.status).font(.caption).foregroundStyle(.white); Spacer(); Button { cameraFull = false } label: { Image(systemName: "xmark.circle.fill").font(.largeTitle).foregroundStyle(.white) } }
+                    ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.green)
+                    Text(tr("Опоры: ","Referenzen: ") + "\(scanner.linkedBoards.count)/4").foregroundStyle(.white)
+                }.padding().background(.black.opacity(0.7))
+            }.background(Color.black).onAppear { scanner.start() }
+        }
         .onAppear { scanner.requestAccessAndStart(target: 1) }
         .onDisappear { scanner.stop() }
     }
@@ -170,11 +185,12 @@ struct LiftOverview: UIViewRepresentable {
                 scene.rootNode.addChildNode(n)
             }
         }
-        let points: [(Float,Float,Float)] = [(-2,2.4,0.23),(-2,0.9,0.23),(2,2.4,0.23),(2,0.9,0.23),(-1.1,0.42,1.25),(1.1,0.42,1.25),(-1.1,0.42,-1.25),(1.1,0.42,-1.25)]
+        let points: [(Float,Float,Float)] = [(-2,0.9,1.25),(-2,0.9,-1.25),(2,0.9,1.25),(2,0.9,-1.25),(-1.1,0.42,1.25),(1.1,0.42,1.25),(-1.1,0.42,-1.25),(1.1,0.42,-1.25)]
         for (i,p) in points.enumerated() {
-            let g = SCNSphere(radius: 0.15)
+            let g = SCNBox(width: 0.30, height: 0.30, length: 0.035, chamferRadius: 0.008)
             let n = SCNNode(geometry: g)
             n.name = "marker-\(i+1)"
+            n.eulerAngles.y = p.0 < 0 ? -Float.pi/2 : Float.pi/2
             n.position = SCNVector3(p.0,p.1,p.2)
             scene.rootNode.addChildNode(n)
             let label = SCNText(string: String(i+1), extrusionDepth: 0)
@@ -204,11 +220,13 @@ struct LiftOverview: UIViewRepresentable {
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
     func makeUIView(context: Context) -> PreviewView {
-        let view = PreviewView()
+        let view = PreviewView(frame: .zero)
         view.layerSession.session = session
         return view
     }
-    func updateUIView(_ view: PreviewView, context: Context) {}
+    func updateUIView(_ view: PreviewView, context: Context) {
+        if view.layerSession.session !== session { view.layerSession.session = session }
+    }
 }
 final class PreviewView: UIView {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
@@ -270,7 +288,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     private func configureAndStart() {
         queue.async {
             if !self.configured {
-                guard let camera = AVCaptureDevice.default(for: .video),
+                guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
                       let input = try? AVCaptureDeviceInput(device: camera),
                       self.session.canAddInput(input) else {
                     DispatchQueue.main.async { self.status = "Камера недоступна" }
