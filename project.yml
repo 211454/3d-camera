@@ -6,11 +6,16 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "16.0"
-    sources: [AUTOKLINIK3DCameraApp.swift, MarkerBoardConfiguration.swift]
+    sources: [AUTOKLINIK3DCameraApp.swift, MarkerBoardConfiguration.swift, ArucoBridge.mm, ArucoBridge.h, AUTOKLINIK-Bridging-Header.h]
+    dependencies:
+      - framework: OpenCV.xcframework
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.autoklinik.camera3dtest
         SWIFT_VERSION: 5.0
+        SWIFT_OBJC_BRIDGING_HEADER: AUTOKLINIK-Bridging-Header.h
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_NSCameraUsageDescription: "Камера используется для распознавания мишеней ChArUco."
         GENERATE_INFOPLIST_FILE: YES
