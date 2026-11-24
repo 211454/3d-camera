@@ -13,128 +13,119 @@ struct AutoKlinik3DCameraApp: App {
 
 struct ContentView: View {
     @StateObject private var scanner = MarkerScanner()
-    @State private var target = 1
     @State private var language = "ru"
+    @State private var selectedWheel = 5
+    @State private var adjustment = false
+    @State private var before: [Int: String] = [:]
+    private let navy = Color(red: 0.04, green: 0.07, blue: 0.12)
+    private let panel = Color(red: 0.08, green: 0.13, blue: 0.20)
+    private func tr(_ ru: String, _ de: String) -> String { language == "ru" ? ru : de }
+    private var names: [String] { [tr("Переднее левое","Vorne links"),tr("Переднее правое","Vorne rechts"),tr("Заднее левое","Hinten links"),tr("Заднее правое","Hinten rechts")] }
 
     var body: some View {
-        ZStack {
-            Color(red: 0.04, green: 0.07, blue: 0.12).ignoresSafeArea()
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        Text(scanner.spatialReady ? (language == "ru" ? "AUTOKLINIK • ТЕСТ ИЗМЕРЕНИЙ" : "AUTOKLINIK • MESSTEST") : (language == "ru" ? "AUTOKLINIK • КАЛИБРОВКА" : "AUTOKLINIK • KALIBRIERUNG"))
-                            .font(.headline.bold()).foregroundStyle(.white)
-                        Picker("Язык / Sprache", selection: $language) {
-                            Text("Русский").tag("ru")
-                            Text("Deutsch").tag("de")
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("AUTOKLINIK").font(.title2.bold()).foregroundStyle(.white)
+                    Text("3D  •  "+tr("ГЕОМЕТРИЯ КОЛЁС","ACHSVERMESSUNG")).font(.caption2.bold()).foregroundStyle(.cyan)
+                }
+                Spacer()
+                Menu {
+                    Button("Русский") { language = "ru"; scanner.setLanguage("ru") }
+                    Button("Deutsch") { language = "de"; scanner.setLanguage("de") }
+                } label: { Image(systemName: "globe").font(.title2).foregroundStyle(.white) }
+            }.padding(14)
+            HStack(spacing: 4) {
+                step("1",tr("Калибровка","Kalibrierung"),!scanner.spatialReady)
+                step("2",tr("Измерения","Messung"),scanner.spatialReady && !adjustment)
+                step("3",tr("Настройка","Einstellung"),scanner.spatialReady && adjustment)
+            }.padding(.horizontal,10)
+            ScrollView {
+                VStack(spacing: 10) {
+                    HStack {
+                        Label(scanner.spatialReady ? tr("Опоры связаны","Referenzen verbunden") : tr("Привязка опор","Referenzen erfassen"), systemImage: scanner.spatialReady ? "checkmark.circle" : "scope")
+                            .foregroundStyle(scanner.spatialReady ? Color.green : Color.orange)
+                        Spacer()
+                        Text("\(scanner.linkedBoards.count)/4").monospacedDigit().foregroundStyle(.white)
+                    }.font(.caption.bold())
+                    ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.green)
+                    ZStack(alignment: .topLeading) {
+                        LiftOverview(detected: scanner.detected, visible: scanner.visible).frame(height: 300)
+                        Text(tr("3D • СХЕМА","3D • SCHEMA")).font(.caption2.bold()).foregroundStyle(.cyan).padding(10)
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Label(tr("Опоры","Referenzen"), systemImage: "circle.fill").foregroundStyle(.green)
+                                Spacer()
+                                Text(tr("Модель не в масштабе","Nicht maßstabsgetreu")).foregroundStyle(.gray)
+                            }.font(.caption2).padding(10)
                         }
-                        .pickerStyle(.segmented)
-                        .onChange(of: language) { scanner.setLanguage($0) }
-
-                        CameraPreview(session: scanner.session)
-                            .frame(height: scanner.spatialReady ? 160 : 300)
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(alignment: .topLeading) {
-                                Text(scanner.status)
-                                    .font(.caption)
-                                    .lineLimit(3)
-                                    .padding(8)
-                                    .background(.black.opacity(0.75))
-                                    .foregroundStyle(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    .padding(8)
-                            }
-
-                        LiftOverview(detected: scanner.detected, visible: scanner.visible)
-                            .frame(height: 280)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                        Text(language == "ru" ? "Схема подъёмника • не масштабная" : "Hebebühne • schematisch")
-                            .font(.caption2).foregroundStyle(.white.opacity(0.7))
-                        Text(language == "ru" ? "ДВЕ СТОЙКИ · 4 ОПОРНЫЕ МИШЕНИ" : "ZWEI SÄULEN · 4 REFERENZMARKEN")
-                            .font(.caption.bold()).foregroundStyle(.white)
-                        HStack(spacing: 10) {
-                            postCard(title: language == "ru" ? "Стойка 1" : "Säule 1", ids: [1, 2])
-                            postCard(title: language == "ru" ? "Стойка 2" : "Säule 2", ids: [3, 4])
+                    }.background(panel).clipShape(RoundedRectangle(cornerRadius: 14))
+                    HStack {
+                        CameraPreview(session: scanner.session).frame(width: 142,height: 106).clipShape(RoundedRectangle(cornerRadius: 9))
+                        VStack(alignment: .leading, spacing: 7) {
+                            Label(tr("КАМЕРА LIVE","KAMERA LIVE"),systemImage: "video.fill").foregroundStyle(.cyan).font(.caption.bold())
+                            Text(scanner.status).font(.caption).foregroundStyle(.white)
+                            Text(tr("Мишени: ","Tafeln: ")+"\(scanner.detected.count)/8").font(.caption2).foregroundStyle(.green)
                         }
-                        Text(language == "ru" ? "ЧЕТЫРЕ КОЛЕСА" : "VIER RÄDER")
-                            .font(.caption.bold()).foregroundStyle(.white)
-                        VStack(spacing: 8) {
-                            Text(language == "ru" ? "ПЕРЕД АВТОМОБИЛЯ ↑" : "FAHRZEUGFRONT ↑").font(.caption2).foregroundStyle(.cyan)
-                            HStack(spacing: 8) {
-                                wheelCard(5, title: language == "ru" ? "Переднее левое" : "Vorne links")
-                                wheelCard(6, title: language == "ru" ? "Переднее правое" : "Vorne rechts")
-                            }
-                            HStack(spacing: 8) {
-                                wheelCard(7, title: language == "ru" ? "Заднее левое" : "Hinten links")
-                                wheelCard(8, title: language == "ru" ? "Заднее правое" : "Hinten rechts")
-                            }
-                        }
-                        Text(language == "ru" ? "Сохранено мишеней: \(scanner.detected.count) из 8" : "Gespeicherte Tafeln: \(scanner.detected.count) von 8")
-                            .font(.caption).foregroundStyle(.orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(scanner.spatialReady ? (language == "ru" ? "Четыре опоры связаны • тест пространственных координат" : "Vier Referenzen verbunden • Raumkoordinatentest") : (language == "ru" ? "Связано опор: \(scanner.linkedBoards.count)/4. Покажите ID 0, затем соседние опоры вместе." : "Referenzen verbunden: \(scanner.linkedBoards.count)/4. ID 0, dann benachbarte Referenzen gemeinsam zeigen."))
-                            .font(.caption).foregroundStyle(scanner.spatialReady ? Color.green : Color.yellow)
-                        Text(language == "ru" ? "Тест камеры, не измерение развала-схождения" : "Kameratest, keine Achsvermessung")
-                            .font(.caption2).foregroundStyle(.white.opacity(0.7))
+                        Spacer(minLength: 0)
+                    }.padding(9).background(panel).clipShape(RoundedRectangle(cornerRadius: 12))
+                    if !scanner.spatialReady {
+                        Text(tr("Покажите ID 0, затем соседние опоры вместе.","ID 0, dann benachbarte Referenzen gemeinsam zeigen.")).font(.caption).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(14)
-                }
-                Button(language == "ru" ? "Начать сканирование" : "Scan starten") {
-                    scanner.setTarget(target)
-                    scanner.start()
-                }
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
-                .background(Color.cyan)
-                .foregroundStyle(.black)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color(red: 0.04, green: 0.07, blue: 0.12))
+                    HStack {
+                        Text(tr("ИЗМЕРЕНИЯ КОЛЁС","RADMESSUNGEN")).font(.caption.bold()).foregroundStyle(.white)
+                        Spacer()
+                        Text(tr("ТЕСТ • мм","TEST • mm")).font(.caption2.bold()).foregroundStyle(.orange)
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible()),GridItem(.flexible())],spacing: 8) {
+                        ForEach(5...8,id: \.self) { id in
+                            Button { selectedWheel = id } label: { wheelCard(id) }.buttonStyle(.plain)
+                        }
+                    }
+                    if adjustment && scanner.spatialReady {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(names[selectedWheel-5]).font(.headline).foregroundStyle(.white)
+                            Text(tr("До: ","Vorher: ")+(before[selectedWheel] ?? "—")).foregroundStyle(.gray)
+                            Text(tr("Сейчас: ","Jetzt: ")+(scanner.relativeTests[selectedWheel] ?? "—")).foregroundStyle(scanner.liveRelativeTests.contains(selectedWheel) ? Color.green : Color.gray)
+                            Text(tr("Развал и схождение пока недоступны: требуется проверка калибровки.","Sturz und Spur noch nicht verfügbar: Kalibrierprüfung erforderlich.")).foregroundStyle(.orange)
+                        }.font(.caption).frame(maxWidth: .infinity,alignment: .leading).padding(12).background(panel).clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    Text(tr("Экспериментальные координаты мишеней. Не использовать для регулировки автомобиля.","Experimentelle Markerkoordinaten. Nicht zur Fahrzeugeinstellung verwenden.")).font(.caption2).foregroundStyle(.orange)
+                }.padding(12)
             }
-        }
-        .onAppear { scanner.requestAccessAndStart(target: target) }
+            HStack(spacing: 8) {
+                Button { scanner.start() } label: {
+                    Label(tr("Камера","Kamera"),systemImage: "camera").frame(maxWidth: .infinity)
+                }.buttonStyle(.bordered).tint(.cyan)
+                Button {
+                    if !adjustment { before = scanner.relativeTests }
+                    adjustment.toggle()
+                } label: {
+                    Label(adjustment ? tr("Измерения","Messung") : tr("Режим настройки","Einstellung"),systemImage: "slider.horizontal.3").frame(maxWidth: .infinity)
+                }.buttonStyle(.borderedProminent).tint(.cyan).disabled(!scanner.spatialReady)
+            }.font(.caption.bold()).padding(12).background(panel)
+        }.background(navy.ignoresSafeArea()).preferredColorScheme(.dark)
+        .onAppear { scanner.requestAccessAndStart(target: 1) }
         .onDisappear { scanner.stop() }
     }
-
-    private func postCard(title: String, ids: [Int]) -> some View {
-        VStack(spacing: 8) {
-            Text(title).font(.subheadline.bold()).foregroundStyle(.white)
-            HStack(spacing: 8) {
-                ForEach(ids, id: \.self) { id in markerTile(id) }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(10)
-        .background(Color.white.opacity(0.09))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+    private func step(_ number: String,_ title: String,_ active: Bool) -> some View {
+        HStack(spacing: 4) {
+            Text(number).font(.caption2.bold()).padding(5).background(active ? Color.cyan : Color.gray.opacity(0.3)).clipShape(Circle()).foregroundStyle(active ? Color.black : Color.white)
+            Text(title).font(.caption2.bold()).lineLimit(1).minimumScaleFactor(0.7)
+        }.foregroundStyle(active ? Color.cyan : Color.gray).frame(maxWidth: .infinity).padding(.vertical,9).background(panel).clipShape(RoundedRectangle(cornerRadius: 8))
     }
-
-    private func wheelCard(_ id: Int, title: String) -> some View {
-        HStack(spacing: 6) {
-            markerTile(id)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.caption2).foregroundStyle(.white)
-                Text(scanner.relativeTests[id] ?? "—").font(.system(size: 10, design: .monospaced)).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.cyan : Color.gray)
-                Text(language == "ru" ? "Тест маркеров • не развал" : "Markertest • kein Sturz").font(.caption2).foregroundStyle(.orange)
+    private func wheelCard(_ id: Int) -> some View {
+        VStack(alignment: .leading,spacing: 7) {
+            HStack {
+                Image(systemName: "circle.circle").foregroundStyle(.cyan)
+                Text(names[id-5]).font(.caption.bold()).foregroundStyle(.white)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(7)
-        .background(Color.white.opacity(0.09))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func markerTile(_ id: Int) -> some View {
-        Text("\(id)")
-            .font(.subheadline.bold())
-            .frame(width: 32, height: 32)
-            .background(scanner.detected.contains(id) ? Color.green : Color.gray.opacity(0.55))
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+            Text(scanner.relativeTests[id] ?? "X —  Y —  Z —").font(.system(size: 11,design: .monospaced)).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.green : Color.gray).fixedSize(horizontal: false, vertical: true)
+            Text(scanner.liveRelativeTests.contains(id) ? tr("В кадре","Live") : tr("Нет свежих данных","Keine Live-Daten")).font(.caption2).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.green : Color.orange)
+            Text(tr("Развал —  Схождение —","Sturz —  Spur —")).font(.caption2).foregroundStyle(.gray)
+        }.padding(10).frame(maxWidth: .infinity,alignment: .leading).background(panel).clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(selectedWheel == id ? Color.cyan : Color.clear,lineWidth: 1))
     }
 }
 
@@ -157,15 +148,20 @@ struct LiftOverview: UIViewRepresentable {
             scene.rootNode.addChildNode(n)
         }
         box(5,0.12,6,0,-0.1,0,.darkGray)
-        for x: Float in [-2,2] {
+        for x in [Float(-2),Float(2)] {
             box(0.35,2.8,0.4,x,1.4,0,.systemBlue)
             box(1.3,0.14,0.24,x * 0.68,0.18,1,.systemYellow)
             box(1.3,0.14,0.24,x * 0.68,0.18,-1,.systemYellow)
         }
-        box(1.7,0.65,3.8,0,0.65,0,.lightGray)
-        box(1.45,0.55,1.9,0,1.2,-0.15,.darkGray)
-        for x: Float in [-0.9,0.9] {
-            for z: Float in [-1.25,1.25] {
+        box(1.7,0.48,3.8,0,0.65,0,.lightGray)
+        box(1.42,0.38,1.85,0,1.03,-0.12,UIColor(red: 0.12, green: 0.24, blue: 0.34, alpha: 1))
+        box(1.35,0.12,1.72,0,1.26,-0.12,.lightGray)
+        for x in [Float(-0.57),Float(0.57)] {
+            box(0.35,0.12,0.06,x,0.72,1.91,.white)
+            box(0.35,0.12,0.06,x,0.72,-1.91,.systemRed)
+        }
+        for x in [Float(-0.9),Float(0.9)] {
+            for z in [Float(-1.25),Float(1.25)] {
                 let wheel = SCNCylinder(radius: 0.36, height: 0.26)
                 wheel.firstMaterial?.diffuse.contents = UIColor.black
                 let n = SCNNode(geometry: wheel)
