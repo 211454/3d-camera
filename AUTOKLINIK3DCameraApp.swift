@@ -24,151 +24,203 @@ struct ContentView: View {
     private func tr(_ ru: String, _ de: String) -> String { language == "ru" ? ru : de }
     private var names: [String] { [tr("Переднее левое","Vorne links"),tr("Переднее правое","Vorne rechts"),tr("Заднее левое","Hinten links"),tr("Заднее правое","Hinten rechts")] }
 
+    @State private var showJournal = false
+    @State private var showSettings = false
     @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         GeometryReader { geo in
+            let compact = geo.size.width < 650
+            let sideWidth = compact ? max(82, geo.size.width * 0.24) : geo.size.width * 0.23
             ZStack {
                 navy.ignoresSafeArea()
-                VStack(spacing: 8) {
-                    LiftOverview(detected: scanner.detected, visible: scanner.visible, wheelYawTests: scanner.wheelYawTests)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .overlay(alignment: .topLeading) {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(tr("3D ПОДЪЁМНИК • 4 КОЛЕСА", "3D HEBEBÜHNE • 4 RÄDER"))
-                                    .font(.caption.bold()).foregroundStyle(.cyan)
-                                Text(tr("Опоры", "Referenzen") + " \\(scanner.linkedBoards.count)/4  •  " + tr("Маркеры", "Marker") + " \\(scanner.detected.count)/8")
-                                    .font(.caption.monospacedDigit())
-                            }
-                            .padding(10)
-                            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
-                            .padding(10)
-                        }
-                    .overlay(alignment: .leading) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(tr("СХЕМА", "SCHEMA")).font(.system(size: 10, weight: .bold)).foregroundStyle(.cyan)
-                            ForEach(1...4, id: \.self) { id in
-                                HStack(spacing: 3) {
-                                    Circle().fill(scanner.linkedBoards.contains(id) ? .green : .gray).frame(width: 7, height: 7)
-                                    Text("\\(id)").font(.system(size: 10, design: .monospaced))
-                                }
-                            }
-                            Divider()
-                            ForEach(5...8, id: \.self) { id in
-                                HStack(spacing: 3) {
-                                    Circle().fill(scanner.savedWheelBoards.contains(id) ? .green : .orange).frame(width: 7, height: 7)
-                                    Text("\\(id)").font(.system(size: 10, design: .monospaced))
-                                }
-                            }
-                        }
-                        .padding(7).background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 9))
-                        .padding(.leading, 5)
-                    }
-                    .overlay(alignment: .trailing) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(tr("УГЛЫ • ТЕСТ", "WINKEL • TEST")).font(.system(size: 9, weight: .bold)).foregroundStyle(.cyan)
-                            ForEach(5...8, id: \.self) { id in
-                                HStack(spacing: 3) {
-                                    Text(["FL","FR","RL","RR"][id-5])
-                                    Spacer(minLength: 2)
-                                    Text(scanner.wheelYawTests[id].map { String(format: "%+.1f°", Double($0 * 180 / .pi)) } ?? "—")
-                                        .foregroundStyle(scanner.wheelYawTests[id] == nil ? .gray : .green)
-                                }.font(.system(size: 9, design: .monospaced))
-                            }
-                            Text(tr("Развал —  Кастер —", "Sturz —  Nachlauf —"))
-                                .font(.system(size: 8)).foregroundStyle(.gray)
-                        }
-                        .frame(width: 104)
-                        .padding(7).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 9))
-                        .padding(.trailing, 5)
-                    }
-                    if calibrationMode || cameraFull {
-                        HStack(spacing: 10) {
-                            CameraPreview(session: scanner.session)
-                                .frame(width: min(geo.size.width * 0.43, 190), height: 138)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.cyan.opacity(0.65)))
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(scanner.status).font(.caption.bold()).lineLimit(3)
-                                ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.cyan)
-                                Text(tr("Наведите на маркеры опор", "Referenzmarker erfassen"))
-                                    .font(.caption2).foregroundStyle(.secondary)
-                                Button { scanner.start() } label: {
-                                    Label(tr("Камера", "Kamera"), systemImage: "video.fill")
-                                }.font(.caption).buttonStyle(.borderedProminent)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(10).background(panel, in: RoundedRectangle(cornerRadius: 14))
-                    }
-                    HStack(spacing: 6) {
-                        Label(tr("Камера", "Kamera"), systemImage: "camera")
-                        Spacer()
-                        Label(tr("Схема", "Schema"), systemImage: "car.side")
-                        Spacer()
-                        Label(tr("Измерения", "Messung"), systemImage: "chart.bar")
-                        Spacer()
-                        Label(tr("Журнал", "Protokoll"), systemImage: "list.bullet.rectangle")
-                    }
-                    .font(.system(size: 9)).foregroundStyle(.cyan)
-                    .padding(8).background(panel, in: RoundedRectangle(cornerRadius: 9))
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
-                        ForEach(5...8, id: \.self) { id in
-                            Button { selectedWheel = id; scanner.setTarget(id) } label: { wheelCard(id) }
-                                .buttonStyle(.plain)
-                        }
-                    }
-                    if adjustment {
-                        Text(tr("До: ", "Vorher: ") + (before[selectedWheel] ?? "—"))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(tr("Тест координат • не для регулировки", "Koordinatentest • keine Fahrzeugeinstellung"))
-                        .font(.caption2).foregroundStyle(.orange)
-                }
-                .padding(10).padding(.top, 70).padding(.bottom, 62)
-                VStack(spacing: 0) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("AUTOKLINIK 3D").font(.title2.bold())
-                            Text(tr("ГЕОМЕТРИЯ КОЛЁС","ACHSVERMESSUNG")).font(.caption2.bold()).foregroundStyle(.cyan)
-                        }
-                        Spacer()
+                VStack(spacing: 7) {
+                    HStack(spacing: 7) {
+                        Text("AUTOKLINIK").font(.system(size: compact ? 15 : 24, weight: .black, design: .rounded)).italic()
+                        Text("3D").font(.system(size: compact ? 15 : 24, weight: .black)).foregroundStyle(.blue)
+                        Spacer(minLength: 1)
+                        Text(calibrationMode ? "① " + tr("Калибровка", "Kalibrierung") : "① ✓")
+                            .foregroundStyle(calibrationMode ? .cyan : .green)
+                        Text("›").foregroundStyle(.gray)
+                        Text(adjustment ? "② ✓" : "② " + tr("Измерение", "Messung"))
+                            .foregroundStyle(!calibrationMode && !adjustment ? .cyan : .gray)
+                        Text("›").foregroundStyle(.gray)
+                        Text(adjustment ? "③ " + tr("Регулировка", "Einstellung") : "③")
+                            .foregroundStyle(adjustment ? .cyan : .gray)
+                        Spacer(minLength: 1)
                         Menu {
                             Button("Русский") { language = "ru"; scanner.setLanguage("ru") }
                             Button("Deutsch") { language = "de"; scanner.setLanguage("de") }
-                        } label: { Image(systemName: "globe").font(.title2).padding(8) }
-                    }.padding(12).background(navy.opacity(0.94))
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Button { calibrationMode = true; cameraFull = false; adjustment = false; scanner.start() } label: {
-                            step("1",tr("Калибровка","Kalibrierung"),calibrationMode)
-                        }.buttonStyle(.plain)
-                        Button { if scanner.spatialReady { calibrationMode = false; adjustment = false; cameraFull = false } else { calibrationMode = true; scanner.start() } } label: {
-                            step("2",tr("Измерения","Messung"),!calibrationMode && !adjustment)
-                        }.buttonStyle(.plain)
-                        Button { cameraFull.toggle(); scanner.start() } label: {
-                            step("3",tr("Камера","Kamera"),cameraFull)
-                        }.buttonStyle(.plain)
-                    }.padding(12).background(navy.opacity(0.96))
+                        } label: { Image(systemName: "globe") }
+                        Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                    }
+                    .font(.system(size: compact ? 9 : 13, weight: .bold))
+                    .padding(9).background(panel, in: RoundedRectangle(cornerRadius: 12))
+
+                    HStack(spacing: 5) {
+                        referenceMap
+                            .frame(width: sideWidth)
+                        ZStack(alignment: .bottomLeading) {
+                            LiftOverview(detected: scanner.detected, visible: scanner.visible, wheelYawTests: scanner.wheelYawTests)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            if calibrationMode || cameraFull {
+                                CameraPreview(session: scanner.session)
+                                    .frame(width: compact ? 90 : 160, height: compact ? 100 : 155)
+                                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(.cyan))
+                                    .padding(5)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        measurementsPanel
+                            .frame(width: sideWidth)
+                    }
+                    .frame(maxHeight: .infinity)
+
+                    HStack(spacing: 5) {
+                        dashboardButton("camera", tr("Камера", "Kamera")) { cameraFull.toggle(); scanner.start() }
+                        dashboardButton("car.side", tr("Схема", "Schema")) { cameraFull = false }
+                        dashboardButton("chart.bar", tr("Измерения", "Messung")) {
+                            if scanner.spatialReady { calibrationMode = false; adjustment = false; cameraFull = false }
+                            else { calibrationMode = true; scanner.start() }
+                        }
+                        dashboardButton("list.bullet.rectangle", tr("Журнал", "Protokoll")) { showJournal = true }
+                        Button {
+                            if calibrationMode {
+                                scanner.start()
+                            } else if scanner.spatialReady {
+                                before = scanner.relativeTests
+                                adjustment = true
+                            }
+                        } label: {
+                            Text(calibrationMode ? tr("Калибровка", "Kalibrierung") : adjustment ? tr("Регулировка", "Einstellung") : tr("Далее →", "Weiter →"))
+                                .font(.system(size: compact ? 10 : 13, weight: .bold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        }
+                        .buttonStyle(.plain)
+                        .background(scanner.spatialReady ? Color.green : Color.gray, in: RoundedRectangle(cornerRadius: 9))
+                    }
+                    Text(tr("Тестовые данные. Развал, схождение и кастер не калиброваны.", "Testdaten. Sturz, Spur und Nachlauf nicht kalibriert."))
+                        .font(.system(size: 9)).foregroundStyle(.orange).lineLimit(1).minimumScaleFactor(0.6)
                 }
-            }.frame(width: geo.size.width, height: geo.size.height)
+                .padding(7)
+            }
         }
         .foregroundStyle(.white).preferredColorScheme(.dark)
-        .background(navy.ignoresSafeArea())
         .onAppear { calibrationMode = !scanner.spatialReady; scanner.requestAccessAndStart(target: 1) }
-        .onChange(of: scanner.spatialReady) { ready in
-            if ready { calibrationMode = false; cameraFull = false }
-        }
+        .onChange(of: scanner.spatialReady) { ready in if ready { calibrationMode = false; cameraFull = false } }
         .onChange(of: scenePhase) { phase in
             if phase == .active { scanner.start() }
             else if phase == .background { scanner.stop() }
         }
+        .sheet(isPresented: $showJournal) {
+            NavigationStack {
+                List(5...8, id: \.self) { id in
+                    VStack(alignment: .leading) {
+                        Text(names[id - 5])
+                        Text(scanner.relativeTests[id] ?? "—").font(.caption)
+                    }
+                }
+                .navigationTitle(tr("Журнал", "Protokoll"))
+                .toolbar { Button(tr("Закрыть", "Schließen")) { showJournal = false } }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            NavigationStack {
+                Form {
+                    Picker(tr("Язык", "Sprache"), selection: $language) {
+                        Text("Русский").tag("ru")
+                        Text("Deutsch").tag("de")
+                    }.onChange(of: language) { scanner.setLanguage($0) }
+                    Text(scanner.status)
+                }
+                .navigationTitle(tr("Настройки", "Einstellungen"))
+                .toolbar { Button(tr("Закрыть", "Schließen")) { showSettings = false } }
+            }
+        }
     }
-    private func step(_ number: String,_ title: String,_ active: Bool) -> some View {
-        HStack(spacing: 4) {
-            Text(number).font(.caption2.bold()).padding(5).background(active ? Color.cyan : Color.gray.opacity(0.3)).clipShape(Circle()).foregroundStyle(active ? Color.black : Color.white)
-            Text(title).font(.caption2.bold()).lineLimit(1).minimumScaleFactor(0.7)
-        }.foregroundStyle(active ? Color.cyan : Color.gray).frame(maxWidth: .infinity).padding(.vertical,9).background(panel).clipShape(RoundedRectangle(cornerRadius: 8))
+
+    private var referenceMap: some View {
+        VStack(spacing: 8) {
+            Text(tr("СХЕМА", "SCHEMA")).font(.caption2.bold()).foregroundStyle(.cyan)
+            GeometryReader { geo in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18).stroke(.gray, lineWidth: 2)
+                        .frame(width: geo.size.width * 0.48, height: geo.size.height * 0.64)
+                    ForEach(1...8, id: \.self) { id in
+                        let left = [1,3,5,7].contains(id)
+                        let row: CGFloat = id <= 2 ? 0.12 : id <= 4 ? 0.88 : id <= 6 ? 0.35 : 0.66
+                        let x = left ? geo.size.width * 0.18 : geo.size.width * 0.82
+                        let y = geo.size.height * row
+                        VStack(spacing: 1) {
+                            Text("\(id)").font(.system(size: 10, weight: .bold))
+                            Circle().fill(id <= 4 ? (scanner.linkedBoards.contains(id) ? .green : .gray) : (scanner.savedWheelBoards.contains(id) ? .green : .orange))
+                                .frame(width: 10, height: 10)
+                        }
+                        .position(x: x, y: y)
+                    }
+                }
+            }
+        }
+        .padding(6).frame(maxHeight: .infinity)
+        .background(panel, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var measurementsPanel: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label(tr("База", "Basis") + " \(scanner.linkedBoards.count)/4", systemImage: "lock.shield")
+                .foregroundStyle(scanner.spatialReady ? .green : .orange)
+            Label(tr("Колёса", "Räder") + " \(scanner.savedWheelBoards.count)/4", systemImage: "circle.grid.2x2")
+                .foregroundStyle(scanner.savedWheelBoards.count == 4 ? .green : .orange)
+            Divider()
+            Text(tr("Углы (тест)", "Winkel (Test)")).font(.caption.bold())
+            HStack {
+                Text("FL").frame(maxWidth: .infinity)
+                Text("FR").frame(maxWidth: .infinity)
+            }.font(.system(size: 9, weight: .bold))
+            HStack {
+                yawValue(5)
+                yawValue(6)
+            }
+            HStack {
+                Text("RL").frame(maxWidth: .infinity)
+                Text("RR").frame(maxWidth: .infinity)
+            }.font(.system(size: 9, weight: .bold))
+            HStack {
+                yawValue(7)
+                yawValue(8)
+            }
+            Divider()
+            Text(tr("Развал —", "Sturz —")).font(.system(size: 9))
+            Text(tr("Кастер —", "Nachlauf —")).font(.system(size: 9))
+            Spacer(minLength: 0)
+            Label(scanner.savedWheelBoards.count == 4 ? tr("Маркеры сохранены", "Marker gespeichert") : tr("Сканирование", "Erfassung"), systemImage: "checkmark.circle")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(scanner.savedWheelBoards.count == 4 ? .green : .orange)
+        }
+        .font(.system(size: 10))
+        .padding(7).frame(maxHeight: .infinity)
+        .background(panel, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func yawValue(_ id: Int) -> some View {
+        Text(scanner.wheelYawTests[id].map { String(format: "%+.1f°", Double($0 * 180 / .pi)) } ?? "—")
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(scanner.wheelYawTests[id] == nil ? .gray : .green)
+            .frame(maxWidth: .infinity)
+    }
+
+    private func dashboardButton(_ icon: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                Text(title).lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .font(.system(size: 10))
+            .frame(maxWidth: .infinity).padding(.vertical, 7)
+        }
+        .buttonStyle(.plain)
+        .background(panel, in: RoundedRectangle(cornerRadius: 9))
     }
     private func wheelCard(_ id: Int) -> some View {
         VStack(alignment: .leading,spacing: 7) {
