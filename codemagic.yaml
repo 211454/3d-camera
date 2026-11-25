@@ -16,9 +16,12 @@ workflows:
         script: xcodegen generate
       - name: Build simulator test
         script: |
-          xcodebuild -project AUTOKLINIKCamera.xcodeproj -scheme AUTOKLINIKCamera -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+          xcodebuild -project AUTOKLINIKCamera.xcodeproj -scheme AUTOKLINIKCamera -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$CM_BUILD_DIR/SimulatorDerivedData" CODE_SIGNING_ALLOWED=NO build
+      - name: Capture real app screenshot in iPhone Simulator
+        script: bash scripts/capture-simulator-screen.sh
     artifacts:
       - "**/build/**/*.app"
+      - "screenshots/*.png"
       - "/tmp/xcodebuild_logs/*.log"
 
   ios-iphone-unsigned:
