@@ -51,7 +51,7 @@ struct ContentView: View {
                         .padding(12).padding(.bottom, 68)
                 } else {
                     VStack(spacing: 10) {
-                        LiftOverview(detected: scanner.detected, visible: scanner.visible)
+                        LiftOverview(detected: scanner.detected, visible: scanner.visible, wheelYawTests: scanner.wheelYawTests)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                         HStack {
@@ -127,6 +127,10 @@ struct ContentView: View {
             Text(scanner.relativeTests[id] ?? "X —  Y —  Z —").font(.system(size: 11,design: .monospaced)).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.green : Color.gray).fixedSize(horizontal: false, vertical: true)
             Text(scanner.liveRelativeTests.contains(id) ? tr("В кадре","Live") : tr("Нет свежих данных","Keine Live-Daten")).font(.caption2).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.green : Color.orange)
             Text(tr("Развал —  Схождение —","Sturz —  Spur —")).font(.caption2).foregroundStyle(.gray)
+            if let yaw = scanner.wheelYawTests[id] {
+                Text(String(format: tr("Тест поворота: %+.1f°","Drehtest: %+.1f°"), Double(yaw * 180 / .pi)))
+                    .font(.caption2).foregroundStyle(.cyan)
+            }
         }.padding(10).frame(maxWidth: .infinity,alignment: .leading).background(panel).clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(selectedWheel == id ? Color.cyan : Color.clear,lineWidth: 1))
     }
 }
@@ -134,6 +138,7 @@ struct ContentView: View {
 struct LiftOverview: UIViewRepresentable {
     let detected: Set<Int>
     let visible: Set<Int>
+    let wheelYawTests: [Int: Float]
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView()
         view.backgroundColor = UIColor(red: 0.04, green: 0.07, blue: 0.12, alpha: 1)
@@ -222,6 +227,11 @@ struct LiftOverview: UIViewRepresentable {
                 // Identify each wheel for independent live tracking indicators.
                 let wheelID = z > 0 ? (x < 0 ? 5 : 6) : (x < 0 ? 7 : 8)
                 tire.name = "wheel-\(wheelID)"
+                // Rotate the complete wheel assembly as one node, not just its tire.
+                let wheelPivot = SCNNode()
+                wheelPivot.name = "wheel-pivot-\(wheelID)"
+                wheelPivot.position = SCNVector3(x,0.40,z)
+                scene.rootNode.addChildNode(wheelPivot)
                 tire.eulerAngles.z = .pi/2
                 let rim = part(SCNCylinder(radius: 0.225,height: 0.16),material(.darkGray,metal: 0.45),x,0.40,z)
                 rim.eulerAngles.z = .pi/2
@@ -264,7 +274,13 @@ struct LiftOverview: UIViewRepresentable {
         for id in 1...8 {
             view.scene?.rootNode.childNode(withName: "marker-\(id)", recursively: true)?.geometry?.firstMaterial?.diffuse.contents = visible.contains(id) ? UIColor.systemGreen : (detected.contains(id) ? UIColor.systemOrange : UIColor.systemGray)
         }
-        // Visual tracking state only: no fabricated camber/toe or wheel rotation.
+        // Experimental yaw is relative to the first observed wheel pose in the fixed lift frame.
+        // It is NOT a calibrated toe or camber value.
+        for id in 5...8 {
+            if let yaw = wheelYawTests[id] {
+                view.scene?.rootNode.childNode(withName: "wheel-pivot-\(id)", recursively: true)?.eulerAngles.y = yaw
+            }
+        }
         for id in 5...8 {
             view.scene?.rootNode.childNode(withName: "wheel-\(id)", recursively: true)?.geometry?.firstMaterial?.emission.contents = visible.contains(id) ? UIColor.systemGreen.withAlphaComponent(0.25) : UIColor.black
         }
@@ -301,6 +317,8 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     @Published var boardImageMeasurements: [Int: String] = [:]
     @Published var relativeTests: [Int: String] = [:]
     @Published var liveRelativeTests: Set<Int> = []
+    @Published var wheelYawTests: [Int: Float] = [:]
+    private var firstWheelYaw: [Int: Float] = [:]
     @Published var linkedBoards: Set<Int> = []
     @Published var spatialReady = false
     private var worldRefs: [Int: simd_float4x4] = [:]
@@ -417,6 +435,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
         let linked = Set(worldRefs.keys.compactMap { MarkerBoardConfiguration.boardNumber(forArUcoID: $0) })
         let ready = linked.isSuperset(of: Set(1...4))
         var relative: [Int: String] = [:]
+        var wheelYaw: [Int: Float] = [:]
         if let ref = refs.first(where: { worldRefs[$0] != nil }),
            let base = poses[ref], let world = worldRefs[ref] {
             let worldFromCamera = world * simd_inverse(base)
@@ -425,6 +444,14 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
                 guard let board = MarkerBoardConfiguration.boardNumber(forArUcoID: id), let pose = poses[id] else { continue }
                 let t = (worldFromCamera * pose).columns.3
                 relative[board] = String(format: "X %.1f Y %.1f Z %.1f мм", t.x,t.y,t.z)
+                let transform = worldFromCamera * pose
+                let heading = atan2(transform.columns.0.z, transform.columns.0.x)
+                if heading.isFinite {
+                    if firstWheelYaw[board] == nil { firstWheelYaw[board] = heading }
+                    if let zero = firstWheelYaw[board] {
+                        wheelYaw[board] = atan2(sin(heading-zero),cos(heading-zero))
+                    }
+                }
             }
         }
         let ids = observations.compactMap { $0["id"]?.intValue }
@@ -445,6 +472,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
             self.linkedBoards = linked
             self.spatialReady = ready
             self.liveRelativeTests = Set(relative.keys)
+            self.wheelYawTests = wheelYaw
             for (board, value) in relative { self.relativeTests[board] = value }
             for (board, value) in measurements { self.boardImageMeasurements[board] = value }
             self.detected.formUnion(boards)
