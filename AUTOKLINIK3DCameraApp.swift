@@ -232,8 +232,14 @@ struct LiftOverview: UIViewRepresentable {
                 wheelPivot.name = "wheel-pivot-\(wheelID)"
                 wheelPivot.position = SCNVector3(x,0.40,z)
                 scene.rootNode.addChildNode(wheelPivot)
+                tire.removeFromParentNode()
+                tire.position = SCNVector3Zero
+                wheelPivot.addChildNode(tire)
                 tire.eulerAngles.z = .pi/2
                 let rim = part(SCNCylinder(radius: 0.225,height: 0.16),material(.darkGray,metal: 0.45),x,0.40,z)
+                rim.removeFromParentNode()
+                rim.position = SCNVector3Zero
+                wheelPivot.addChildNode(rim)
                 rim.eulerAngles.z = .pi/2
                 let faceX = x + sign*0.095
                 let hub = part(SCNCylinder(radius: 0.065,height: 0.035),material(.lightGray,metal: 0.55),faceX,0.40,z)
