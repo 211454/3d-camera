@@ -219,6 +219,9 @@ struct LiftOverview: UIViewRepresentable {
             _ = part(SCNSphere(radius: 0.12),material(paint,metal: 0.3),x*1.05,1.04,0.67)
             for z in [Float(-1.25),Float(1.25)] {
                 let tire = part(SCNTorus(ringRadius: 0.275,pipeRadius: 0.085),material(.black,rough: 0.85),x,0.40,z)
+                // Identify each wheel for independent live tracking indicators.
+                let wheelID = z > 0 ? (x < 0 ? 5 : 6) : (x < 0 ? 7 : 8)
+                tire.name = "wheel-\(wheelID)"
                 tire.eulerAngles.z = .pi/2
                 let rim = part(SCNCylinder(radius: 0.225,height: 0.16),material(.darkGray,metal: 0.45),x,0.40,z)
                 rim.eulerAngles.z = .pi/2
@@ -260,6 +263,10 @@ struct LiftOverview: UIViewRepresentable {
     func updateUIView(_ view: SCNView, context: Context) {
         for id in 1...8 {
             view.scene?.rootNode.childNode(withName: "marker-\(id)", recursively: true)?.geometry?.firstMaterial?.diffuse.contents = visible.contains(id) ? UIColor.systemGreen : (detected.contains(id) ? UIColor.systemOrange : UIColor.systemGray)
+        }
+        // Visual tracking state only: no fabricated camber/toe or wheel rotation.
+        for id in 5...8 {
+            view.scene?.rootNode.childNode(withName: "wheel-\(id)", recursively: true)?.geometry?.firstMaterial?.emission.contents = visible.contains(id) ? UIColor.systemGreen.withAlphaComponent(0.25) : UIColor.black
         }
     }
 }
