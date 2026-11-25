@@ -29,50 +29,54 @@ struct ContentView: View {
         GeometryReader { geo in
             ZStack {
                 navy.ignoresSafeArea()
-                CameraPreview(session: scanner.session)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity(calibrationMode || cameraFull ? 1 : 0)
-                    .allowsHitTesting(false)
-                if calibrationMode || cameraFull {
-                    VStack {
-                        Spacer()
-                        Text(scanner.status).font(.subheadline.weight(.semibold))
-                        Text(tr("Опоры","Referenzen") + "  \(scanner.linkedBoards.count)/4")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                        ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.cyan)
-                        Text(tr("Покажите соседние опоры вместе","Benachbarte Referenzen gemeinsam zeigen"))
-                            .font(.caption)
-                        Button { scanner.start() } label: {
-                            Label(tr("Запустить камеру","Kamera starten"), systemImage: "video.fill")
-                                .frame(maxWidth: .infinity).padding(10)
-                        }.buttonStyle(.borderedProminent).tint(.blue)
-                    }.padding(16).background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
-                        .padding(12).padding(.bottom, 68)
-                } else {
-                    VStack(spacing: 10) {
-                        LiftOverview(detected: scanner.detected, visible: scanner.visible, wheelYawTests: scanner.wheelYawTests)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                        HStack {
-                            Label(tr("Опоры","Referenzen") + " \(scanner.linkedBoards.count)/4", systemImage: "scope")
-                            Spacer()
-                            Label("\(scanner.detected.count)/8", systemImage: "qrcode.viewfinder")
-                        }.font(.subheadline.bold()).foregroundStyle(.cyan)
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                            ForEach(5...8, id: \.self) { id in
-                                Button { selectedWheel = id; scanner.setTarget(id) } label: { wheelCard(id) }
-                                    .buttonStyle(.plain)
+                VStack(spacing: 8) {
+                    LiftOverview(detected: scanner.detected, visible: scanner.visible, wheelYawTests: scanner.wheelYawTests)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(alignment: .topLeading) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(tr("3D ПОДЪЁМНИК • 4 КОЛЕСА", "3D HEBEBÜHNE • 4 RÄDER"))
+                                    .font(.caption.bold()).foregroundStyle(.cyan)
+                                Text(tr("Опоры", "Referenzen") + " \\(scanner.linkedBoards.count)/4  •  " + tr("Маркеры", "Marker") + " \\(scanner.detected.count)/8")
+                                    .font(.caption.monospacedDigit())
                             }
+                            .padding(10)
+                            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
+                            .padding(10)
                         }
-                        if adjustment {
-                            Text(tr("До: ","Vorher: ") + (before[selectedWheel] ?? "—"))
-                                .font(.caption).foregroundStyle(.secondary)
+                    if calibrationMode || cameraFull {
+                        HStack(spacing: 10) {
+                            CameraPreview(session: scanner.session)
+                                .frame(width: min(geo.size.width * 0.43, 190), height: 138)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.cyan.opacity(0.65)))
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(scanner.status).font(.caption.bold()).lineLimit(3)
+                                ProgressView(value: Double(scanner.linkedBoards.count), total: 4).tint(.cyan)
+                                Text(tr("Наведите на маркеры опор", "Referenzmarker erfassen"))
+                                    .font(.caption2).foregroundStyle(.secondary)
+                                Button { scanner.start() } label: {
+                                    Label(tr("Камера", "Kamera"), systemImage: "video.fill")
+                                }.font(.caption).buttonStyle(.borderedProminent)
+                            }
+                            Spacer(minLength: 0)
                         }
-                        Text(tr("Тест координат • не для регулировки","Koordinatentest • keine Fahrzeugeinstellung"))
-                            .font(.caption2).foregroundStyle(.orange)
-                    }.padding(12).padding(.top, 70).padding(.bottom, 62)
+                        .padding(10).background(panel, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+                        ForEach(5...8, id: \.self) { id in
+                            Button { selectedWheel = id; scanner.setTarget(id) } label: { wheelCard(id) }
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    if adjustment {
+                        Text(tr("До: ", "Vorher: ") + (before[selectedWheel] ?? "—"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(tr("Тест координат • не для регулировки", "Koordinatentest • keine Fahrzeugeinstellung"))
+                        .font(.caption2).foregroundStyle(.orange)
                 }
+                .padding(10).padding(.top, 70).padding(.bottom, 62)
                 VStack(spacing: 0) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
