@@ -44,6 +44,44 @@ struct ContentView: View {
                             .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
                             .padding(10)
                         }
+                    .overlay(alignment: .leading) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(tr("СХЕМА", "SCHEMA")).font(.system(size: 10, weight: .bold)).foregroundStyle(.cyan)
+                            ForEach(1...4, id: \.self) { id in
+                                HStack(spacing: 3) {
+                                    Circle().fill(scanner.linkedBoards.contains(id) ? .green : .gray).frame(width: 7, height: 7)
+                                    Text("\\(id)").font(.system(size: 10, design: .monospaced))
+                                }
+                            }
+                            Divider()
+                            ForEach(5...8, id: \.self) { id in
+                                HStack(spacing: 3) {
+                                    Circle().fill(scanner.savedWheelBoards.contains(id) ? .green : .orange).frame(width: 7, height: 7)
+                                    Text("\\(id)").font(.system(size: 10, design: .monospaced))
+                                }
+                            }
+                        }
+                        .padding(7).background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 9))
+                        .padding(.leading, 5)
+                    }
+                    .overlay(alignment: .trailing) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(tr("УГЛЫ • ТЕСТ", "WINKEL • TEST")).font(.system(size: 9, weight: .bold)).foregroundStyle(.cyan)
+                            ForEach(5...8, id: \.self) { id in
+                                HStack(spacing: 3) {
+                                    Text(["FL","FR","RL","RR"][id-5])
+                                    Spacer(minLength: 2)
+                                    Text(scanner.wheelYawTests[id].map { String(format: "%+.1f°", Double($0 * 180 / .pi)) } ?? "—")
+                                        .foregroundStyle(scanner.wheelYawTests[id] == nil ? .gray : .green)
+                                }.font(.system(size: 9, design: .monospaced))
+                            }
+                            Text(tr("Развал —  Кастер —", "Sturz —  Nachlauf —"))
+                                .font(.system(size: 8)).foregroundStyle(.gray)
+                        }
+                        .frame(width: 104)
+                        .padding(7).background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 9))
+                        .padding(.trailing, 5)
+                    }
                     if calibrationMode || cameraFull {
                         HStack(spacing: 10) {
                             CameraPreview(session: scanner.session)
@@ -63,6 +101,17 @@ struct ContentView: View {
                         }
                         .padding(10).background(panel, in: RoundedRectangle(cornerRadius: 14))
                     }
+                    HStack(spacing: 6) {
+                        Label(tr("Камера", "Kamera"), systemImage: "camera")
+                        Spacer()
+                        Label(tr("Схема", "Schema"), systemImage: "car.side")
+                        Spacer()
+                        Label(tr("Измерения", "Messung"), systemImage: "chart.bar")
+                        Spacer()
+                        Label(tr("Журнал", "Protokoll"), systemImage: "list.bullet.rectangle")
+                    }
+                    .font(.system(size: 9)).foregroundStyle(.cyan)
+                    .padding(8).background(panel, in: RoundedRectangle(cornerRadius: 9))
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
                         ForEach(5...8, id: \.self) { id in
                             Button { selectedWheel = id; scanner.setTarget(id) } label: { wheelCard(id) }
