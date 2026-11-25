@@ -6,6 +6,8 @@ workflows:
     environment:
       xcode: latest
     scripts:
+      - name: AUTOKLINIK AutoTest preflight
+        script: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Install XcodeGen
         script: brew install xcodegen
       - name: Build OpenCV with ArUco for iOS
@@ -26,6 +28,8 @@ workflows:
     environment:
       xcode: latest
     scripts:
+      - name: AUTOKLINIK AutoTest preflight
+        script: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Install XcodeGen
         script: brew install xcodegen
       - name: Download verified OpenCV with ArUco for iPhone
