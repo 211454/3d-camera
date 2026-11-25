@@ -125,7 +125,7 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             }
             Text(scanner.relativeTests[id] ?? "X —  Y —  Z —").font(.system(size: 11,design: .monospaced)).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.green : Color.gray).fixedSize(horizontal: false, vertical: true)
-            Text(scanner.liveRelativeTests.contains(id) ? tr("В кадре","Live") : tr("Нет свежих данных","Keine Live-Daten")).font(.caption2).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.green : Color.orange)
+            Text(scanner.liveRelativeTests.contains(id) ? tr("В кадре","Live") : (scanner.savedWheelBoards.contains(id) ? tr("Сохранено • не в кадре","Gespeichert • nicht sichtbar") : tr("Нет свежих данных","Keine Live-Daten"))).font(.caption2).foregroundStyle(scanner.liveRelativeTests.contains(id) ? Color.green : Color.orange)
             Text(tr("Развал —  Схождение —","Sturz —  Spur —")).font(.caption2).foregroundStyle(.gray)
             if let yaw = scanner.wheelYawTests[id] {
                 Text(String(format: tr("Тест поворота: %+.1f°","Drehtest: %+.1f°"), Double(yaw * 180 / .pi)))
@@ -251,7 +251,8 @@ struct LiftOverview: UIViewRepresentable {
                 }
             }
         }
-        let points: [(Float,Float,Float)] = [(-2.20,0.9,0),(-2.20,1.8,0),(2.20,0.9,0),(2.20,1.8,0),(-1.1,0.42,1.25),(1.1,0.42,1.25),(-1.1,0.42,-1.25),(1.1,0.42,-1.25)]
+        // Two posts, each with a front and a rear reference marker (not stacked vertically).
+        let points: [(Float,Float,Float)] = [(-2.20,1.2,0.20),(2.20,1.2,0.20),(-2.20,1.2,-0.20),(2.20,1.2,-0.20),(-1.1,0.42,1.25),(1.1,0.42,1.25),(-1.1,0.42,-1.25),(1.1,0.42,-1.25)]
         for (i,p) in points.enumerated() {
             let g = SCNBox(width: 0.30, height: 0.30, length: 0.035, chamferRadius: 0.008)
             let n = SCNNode(geometry: g)
@@ -324,6 +325,7 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     @Published var relativeTests: [Int: String] = [:]
     @Published var liveRelativeTests: Set<Int> = []
     @Published var wheelYawTests: [Int: Float] = [:]
+    @Published var savedWheelBoards: Set<Int> = []
     private var firstWheelYaw: [Int: Float] = [:]
     @Published var linkedBoards: Set<Int> = []
     @Published var spatialReady = false
@@ -478,7 +480,9 @@ final class MarkerScanner: NSObject, ObservableObject, AVCaptureVideoDataOutputS
             self.linkedBoards = linked
             self.spatialReady = ready
             self.liveRelativeTests = Set(relative.keys)
-            self.wheelYawTests = wheelYaw
+            // Keep last measured wheel orientation when the wheel leaves the camera frame.
+            for (board, yaw) in wheelYaw { self.wheelYawTests[board] = yaw }
+            self.savedWheelBoards.formUnion(relative.keys)
             for (board, value) in relative { self.relativeTests[board] = value }
             for (board, value) in measurements { self.boardImageMeasurements[board] = value }
             self.detected.formUnion(boards)
